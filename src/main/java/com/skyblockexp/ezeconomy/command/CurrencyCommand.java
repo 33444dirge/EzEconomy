@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.command;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.util.MessageUtils;
 import com.skyblockexp.ezeconomy.manager.CurrencyPreferenceManager;
@@ -105,7 +107,7 @@ public class CurrencyCommand implements CommandExecutor {
 			}
 
 			// Attempt an atomic withdraw; tryWithdraw will fail if concurrent change removed funds
-			boolean withdrawn = storage.tryWithdraw(player.getUniqueId(), from, usedSource.doubleValue());
+			boolean withdrawn = IslandSpendLedger.excludedWithdraw(storage, player.getUniqueId(), from, usedSource.doubleValue());
 			if (!withdrawn) {
 				MessageUtils.send(sender, plugin, "not_enough_money");
 				return true;

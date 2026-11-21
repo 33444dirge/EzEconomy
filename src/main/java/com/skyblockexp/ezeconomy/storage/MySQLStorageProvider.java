@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.storage;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.api.storage.EconomyMutationResult;
 import org.bukkit.configuration.file.YamlConfiguration;
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
@@ -218,21 +220,25 @@ public class MySQLStorageProvider implements StorageProvider {
                 balanceBackgroundPersistence = new com.skyblockexp.ezeconomy.storage.mysql.MySQLBalanceBackgroundPersistenceService(plugin, hotPathDataSource, table, balQueue, balBatch, balFlush);
             }
         } catch (Exception ignored) {}
-        metricsScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "EzEconomy-MySQL-Metrics");
-            t.setDaemon(true);
-            return t;
-        });
-        metricsScheduler.scheduleAtFixedRate(() -> {
-            try {
-                long dc = depositCount.get();
-                if (dc > 0) plugin.getLogger().info("[EzEconomy] Deposit avg latency: " + (depositTimeNs.get() / (double) dc / 1_000_000.0) + " ms over " + dc + " ops");
-                long wc = withdrawCount.get();
-                if (wc > 0) plugin.getLogger().info("[EzEconomy] Withdraw avg latency: " + (withdrawTimeNs.get() / (double) wc / 1_000_000.0) + " ms over " + wc + " ops");
-            } catch (Throwable t) {
-                // swallow
-            }
-        }, 60, 60, TimeUnit.SECONDS);
+        if (plugin.getConfig().getBoolean("performance.mysql.metrics.enabled", false)) {
+            metricsScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "EzEconomy-MySQL-Metrics");
+                t.setDaemon(true);
+                return t;
+            });
+            metricsScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    long dc = depositCount.get();
+                    if (dc > 0) plugin.getLogger().info("[EzEconomy] Deposit avg latency: " + (depositTimeNs.get() / (double) dc / 1_000_000.0) + " ms over " + dc + " ops");
+                    long wc = withdrawCount.get();
+                    if (wc > 0) plugin.getLogger().info("[EzEconomy] Withdraw avg latency: " + (withdrawTimeNs.get() / (double) wc / 1_000_000.0) + " ms over " + wc + " ops");
+                } catch (Throwable t) {
+                    // swallow
+                }
+            }, 60, 60, TimeUnit.SECONDS);
+        }
+
+        IslandSpendLedger.mysql(plugin, hotPathDataSource, connection, table);
 
         // Wire balance DAO to encapsulate hot-path + fallback SQL logic
         try {
@@ -242,8 +248,13 @@ public class MySQLStorageProvider implements StorageProvider {
         } catch (Exception ignored) {}
     }
 
+    /** Shared JDBC operations use the same transaction monitor as the ledger. */
+    private Object connectionLock() {
+        return connection != null ? connection : lock;
+    }
+
     private Connection refreshFallbackConnection() throws SQLException {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             if (connectionManager == null) {
                 throw new SQLException("MySQL connection manager is not initialized");
             }
@@ -256,7 +267,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
 
     private HikariDataSource refreshPrimaryDataSource() throws SQLException {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             if (connectionManager == null) {
                 throw new SQLException("MySQL connection manager is not initialized");
             }
@@ -323,7 +334,7 @@ public class MySQLStorageProvider implements StorageProvider {
     @Override
     public java.util.List<Transaction> getTransactions(java.util.UUID uuid, String currency) {
         java.util.List<Transaction> transactions = new java.util.ArrayList<>();
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 java.util.List<TransactionModel> rows = transactionRepo.query(
                         TransactionModel.queryBuilder()
@@ -363,7 +374,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 return 0.0;
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 double value = balanceRepo.find(BalanceModel.idFor(uuid, currency))
                        .map(BalanceModel::getBalance).orElse(0.0);
@@ -409,7 +420,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(uuid, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 PlayerModel pm = playerRepo.find(uuid.toString()).orElse(null);
                 if (pm != null) {
@@ -426,7 +437,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
     @Override
     public boolean playerExists(UUID uuid) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 return !balanceRepo.query(BalanceModel.queryBuilder().whereEquals("uuid", uuid.toString()).limit(1).build()).isEmpty();
             } catch (StorageException e) {
@@ -467,7 +478,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(uuid, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 balanceRepo.save(BalanceModel.create(uuid, currency, amount));
                 putCached(balanceCacheKey(uuid, currency), amount);
@@ -520,7 +531,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
 
     public void shutdown() {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 closeHotStatements();
             } catch (Exception e) {
@@ -554,7 +565,7 @@ public class MySQLStorageProvider implements StorageProvider {
         }
     }
     public Map<UUID, Double> getAllBalances(String currency) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             Map<UUID, Double> map = new ConcurrentHashMap<>();
             try {
                 List<BalanceModel> rows = balanceRepo.query(BalanceModel.queryBuilder().whereEquals("currency", currency).build());
@@ -570,6 +581,10 @@ public class MySQLStorageProvider implements StorageProvider {
 
     @Override
     public com.skyblockexp.ezeconomy.storage.TransferResult transfer(UUID fromUuid, UUID toUuid, String currency, double debitAmount, double creditAmount) {
+        var ledgerTransfer = IslandSpendLedger.mysqlTransfer(plugin, hotPathDataSource, connection,
+                table, fromUuid, toUuid, currency, debitAmount, creditAmount);
+        if (ledgerTransfer != null) return ledgerTransfer;
+
         com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
         if (lm == null) {
             // No distributed lock available, fall back to default behavior
@@ -754,7 +769,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
 
     public int getLocalSpoolSize() {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             if (balanceBackgroundPersistence == null) {
                 return -1;
             }
@@ -763,7 +778,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
 
     public com.skyblockexp.ezeconomy.storage.mysql.MySQLBalanceBackgroundPersistenceService.ReplayResult replayLocalSpoolNow() {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             if (balanceBackgroundPersistence == null) {
                 return new com.skyblockexp.ezeconomy.storage.mysql.MySQLBalanceBackgroundPersistenceService.ReplayResult(false, 0, 0);
             }
@@ -794,7 +809,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 bankRepo.save(BankModel.create(name, "dollar", 0.0));
@@ -830,7 +845,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 List<BankModel> existing = bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build());
@@ -844,7 +859,7 @@ public class MySQLStorageProvider implements StorageProvider {
     }
 
     public boolean bankExists(String name) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 return !bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build()).isEmpty();
@@ -871,7 +886,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 return 0.0;
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 double value = bankRepo.find(BankModel.idFor(name, currency)).map(BankModel::getBalance).orElse(0.0);
@@ -903,7 +918,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 bankRepo.save(BankModel.create(name, currency, amount));
@@ -946,7 +961,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
@@ -1006,7 +1021,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
@@ -1076,7 +1091,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 ensureBankTables();
                 java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
@@ -1143,7 +1158,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 ensureBankTables();
                 java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
@@ -1163,7 +1178,7 @@ public class MySQLStorageProvider implements StorageProvider {
 
     public Set<String> getBanks() {
         // bank list is global; use local lock for list operations to avoid distributed overhead
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 return bankRepo.query(BankModel.queryBuilder().build()).stream()
@@ -1194,7 +1209,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 return bankMemberRepo.find(BankMemberModel.idFor(name, uuid)).map(BankMemberModel::isOwner).orElse(false);
@@ -1223,7 +1238,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 return bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
@@ -1253,7 +1268,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             if (isBankMember(name, uuid)) return false;
             try {
@@ -1284,7 +1299,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             try {
                 boolean existed = bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
@@ -1317,7 +1332,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 if (token != null) lm.release(bankId, token);
             }
         }
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             ensureBankTables();
             Set<UUID> set = ConcurrentHashMap.newKeySet();
             try {
@@ -1331,7 +1346,7 @@ public class MySQLStorageProvider implements StorageProvider {
 
     @Override
     public void logTransaction(com.skyblockexp.ezeconomy.api.storage.models.Transaction tx) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 transactionRepo.save(TransactionModel.fromTransaction(tx));
             } catch (StorageException e) {
@@ -1346,7 +1361,7 @@ public class MySQLStorageProvider implements StorageProvider {
      */
     public java.util.Set<String> cleanupOrphanedPlayers() {
         java.util.Set<String> removed = new java.util.HashSet<>();
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 java.util.List<BalanceModel> all = balanceRepo.query(BalanceModel.queryBuilder().build());
                 java.util.Set<String> seen = new java.util.HashSet<>();
@@ -1378,7 +1393,7 @@ public class MySQLStorageProvider implements StorageProvider {
      */
     @Override
     public void insertPendingNotification(UUID targetUuid, String message) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 if (connection == null || connection.isClosed()) return;
                 try (PreparedStatement stmt = connection.prepareStatement(
@@ -1396,7 +1411,7 @@ public class MySQLStorageProvider implements StorageProvider {
     @Override
     public java.util.List<String> pollPendingNotifications(UUID targetUuid) {
         java.util.List<String> messages = new java.util.ArrayList<>();
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 if (connection == null || connection.isClosed()) return messages;
                 try (PreparedStatement stmt = connection.prepareStatement(
@@ -1429,7 +1444,7 @@ public class MySQLStorageProvider implements StorageProvider {
 
     @Override
     public void cleanupOldNotifications(long olderThanMs) {
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 if (connection == null || connection.isClosed()) return;
                 try (PreparedStatement stmt = connection.prepareStatement(
@@ -1446,7 +1461,7 @@ public class MySQLStorageProvider implements StorageProvider {
     @Override
     public UUID resolvePlayerByName(String name) {
         if (name == null) return null;
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 if (playerRepo == null) return null;
                 java.util.List<PlayerModel> results = playerRepo.query(
@@ -1469,7 +1484,7 @@ public class MySQLStorageProvider implements StorageProvider {
     @Override
     public void persistPlayerInfo(UUID uuid, String name, String displayName) {
         if (uuid == null || name == null) return;
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 if (playerRepo == null) return;
                 playerRepo.save(PlayerModel.create(uuid, name, displayName != null ? displayName : name));
@@ -1481,7 +1496,7 @@ public class MySQLStorageProvider implements StorageProvider {
 
     public java.util.Set<String> previewOrphanedPlayers() {
         java.util.Set<String> orphaned = new java.util.HashSet<>();
-        synchronized (lock) {
+        synchronized (connectionLock()) {
             try {
                 java.util.List<BalanceModel> all = balanceRepo.query(BalanceModel.queryBuilder().build());
                 java.util.Set<String> seen = new java.util.HashSet<>();

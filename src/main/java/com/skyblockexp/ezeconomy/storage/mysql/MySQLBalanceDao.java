@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.storage.mysql;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.api.storage.EconomyMutationResult;
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.BalanceModel;
@@ -129,7 +131,7 @@ public class MySQLBalanceDao {
         String cacheKey = balanceCacheKey(uuid, currency);
         String id = BalanceModel.idFor(uuid, currency);
         Object keyLock = lockManager.lockFor(id);
-        synchronized (keyLock) {
+        synchronized (fallback != null ? fallback : keyLock) {
             String upsertSql = "INSERT INTO " + table + " (id, uuid, currency, balance) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)";
             String selectSql = "SELECT balance FROM " + table + " WHERE id = ?";
             try {
@@ -163,6 +165,11 @@ public class MySQLBalanceDao {
     }
 
     public EconomyMutationResult withdrawAndGetBalance(UUID uuid, String currency, double amount) {
+        EconomyMutationResult ledgerResult = IslandSpendLedger.mysqlWithdraw(plugin, resolvePool(), fallback,
+                table, lockManager.lockFor(BalanceModel.idFor(uuid, currency)), balanceBackgroundPersistence,
+                uuid, currency, amount);
+        if (ledgerResult != null) return IslandSpendLedger.cache(ledgerResult, cachePut, uuid, currency);
+
         String cacheKey = balanceCacheKey(uuid, currency);
         HikariDataSource activePool = resolvePool();
         if (activePool != null) {
@@ -208,7 +215,7 @@ public class MySQLBalanceDao {
         String cacheKey = balanceCacheKey(uuid, currency);
         String id = BalanceModel.idFor(uuid, currency);
         Object keyLock = lockManager.lockFor(id);
-        synchronized (keyLock) {
+        synchronized (fallback != null ? fallback : keyLock) {
             String withdrawSql = "UPDATE " + table + " SET balance = balance - ? WHERE id = ? AND balance >= ?";
             String selectSql = "SELECT balance FROM " + table + " WHERE id = ?";
             try {

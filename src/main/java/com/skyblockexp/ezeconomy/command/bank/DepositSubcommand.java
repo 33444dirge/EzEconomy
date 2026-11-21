@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.command.bank;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.command.Subcommand;
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.util.NumberUtil;
@@ -59,7 +61,7 @@ public class DepositSubcommand implements Subcommand {
         boolean walletDebited = false;
         org.bukkit.entity.Player playerSender = sender instanceof org.bukkit.entity.Player ? (org.bukkit.entity.Player) sender : null;
         if (playerSender != null) {
-            walletDebited = storage.tryWithdraw(playerSender.getUniqueId(), currency, amount);
+            walletDebited = IslandSpendLedger.excludedWithdraw(storage, playerSender.getUniqueId(), currency, amount);
             if (!walletDebited) {
                 com.skyblockexp.ezeconomy.util.MessageUtils.send(sender, plugin, "not_enough_money");
                 return true;

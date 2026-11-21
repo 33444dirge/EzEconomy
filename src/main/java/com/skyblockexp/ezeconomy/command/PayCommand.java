@@ -1,6 +1,8 @@
 
 package com.skyblockexp.ezeconomy.command;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.util.MessageUtils;
 import com.skyblockexp.ezeconomy.util.NumberUtil;
 import com.skyblockexp.ezeconomy.core.Money;
@@ -182,7 +184,7 @@ public class PayCommand implements CommandExecutor {
                     MessageUtils.send(sender, plugin, "not_enough_money");
                     return true;
                 }
-                boolean withdrew = storage.tryWithdraw(fromUuid, currency, totalCost.doubleValue());
+                boolean withdrew = IslandSpendLedger.excludedWithdraw(storage, fromUuid, currency, totalCost.doubleValue());
                 if (!withdrew) {
                     MessageUtils.send(sender, plugin, "not_enough_money");
                     return true;

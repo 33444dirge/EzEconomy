@@ -57,6 +57,12 @@ public class EzJdbcStore implements DataStore, JdbcStore, TransactionalJdbcStore
 
     @Override
     public List<Map<String, Object>> query(String sql, List<Object> params) throws Exception {
+        synchronized (connection) {
+            return serializedquery(sql, params);
+        }
+    }
+
+    private List<Map<String, Object>> serializedquery(String sql, List<Object> params) throws Exception {
         String transformed = transformSql(sql);
         try {
             return doQuery(transformed, params);
@@ -75,6 +81,12 @@ public class EzJdbcStore implements DataStore, JdbcStore, TransactionalJdbcStore
 
     @Override
     public int executeUpdate(String sql, List<Object> params) throws Exception {
+        synchronized (connection) {
+            return serializedexecuteUpdate(sql, params);
+        }
+    }
+
+    private int serializedexecuteUpdate(String sql, List<Object> params) throws Exception {
         String transformed = transformSql(sql);
         try {
             return doExecuteUpdate(transformed, params);

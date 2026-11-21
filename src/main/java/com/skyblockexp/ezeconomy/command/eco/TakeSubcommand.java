@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.command.eco;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.command.Subcommand;
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.util.MessageUtils;
@@ -62,7 +64,7 @@ public class TakeSubcommand implements Subcommand {
             return true;
         }
 
-        boolean ok = storage.tryWithdraw(target.getUniqueId(), currency, amount);
+        boolean ok = IslandSpendLedger.excludedWithdraw(storage, target.getUniqueId(), currency, amount);
         if (!ok) {
             MessageUtils.send(sender, plugin, "not_enough_money");
             return true;

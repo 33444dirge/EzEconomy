@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.storage;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.api.storage.EconomyMutationResult;
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
@@ -275,6 +277,7 @@ public class SQLiteStorageProvider implements StorageProvider {
         bankRepo        = new ModelRepository<>(jdbcStore, BankModel.PREFIX,       BankModel::new,       SqlDialect.SQLITE);
         bankMemberRepo  = new ModelRepository<>(jdbcStore, BankMemberModel.PREFIX, BankMemberModel::new, SqlDialect.SQLITE);
         transactionRepo = new ModelRepository<>(jdbcStore, TransactionModel.PREFIX,TransactionModel::new,SqlDialect.SQLITE);
+        IslandSpendLedger.sqlite(plugin, connection, lock, table);
     }
 
     @Override
@@ -443,6 +446,13 @@ public class SQLiteStorageProvider implements StorageProvider {
 
     @Override
     public EconomyMutationResult withdrawAndGetBalance(UUID uuid, String currency, double amount) {
+        EconomyMutationResult ledgerResult = IslandSpendLedger.sqliteWithdraw(plugin, connection, lock,
+                table, backgroundPersistence, uuid, currency, amount);
+        if (ledgerResult != null) {
+            if (ledgerResult.isSuccess()) putCached(balanceCacheKey(uuid, currency), ledgerResult.getBalance());
+            return ledgerResult;
+        }
+
         String cacheKey = balanceCacheKey(uuid, currency);
         synchronized (lock) {
             try {

@@ -1,5 +1,7 @@
 package com.skyblockexp.ezeconomy.core;
 
+import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
 import com.skyblockexp.ezeconomy.compat.registry.RegistryCompat;
 import com.skyblockexp.ezeconomy.manager.BankInterestManager;
@@ -96,6 +98,7 @@ public class EzEconomyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        IslandSpendLedger.close();
         if (this.bootstrap != null) {
             this.bootstrap.stop();
         } else {
