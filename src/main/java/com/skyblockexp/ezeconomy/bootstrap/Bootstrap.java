@@ -16,7 +16,7 @@ public class Bootstrap {
         components = List.of(new ConfigComponent(plugin), new CacheComponent(plugin),
                 new LockingComponent(plugin), new StorageComponent(plugin), new IoComponent(plugin),
                 new MessagingComponent(plugin), new ManagersComponent(plugin), new MetricsComponent(plugin),
-                new EconomyComponent(plugin), new CommandsComponent(plugin),
+                new EconomyComponent(plugin), new SpendingLedgerComponent(plugin), new CommandsComponent(plugin),
                 new ListenersComponent(plugin), new PlaceholderComponent(plugin), new GuiComponent(plugin));
     }
 

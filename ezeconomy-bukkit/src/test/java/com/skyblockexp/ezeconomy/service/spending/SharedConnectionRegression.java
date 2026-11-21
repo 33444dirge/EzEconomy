@@ -1,4 +1,4 @@
-package com.skyblockexp.ezeconomy.api.spending;
+package com.skyblockexp.ezeconomy.service.spending;
 
 import java.sql.*;
 import java.lang.reflect.*;
@@ -19,14 +19,14 @@ public final class SharedConnectionRegression {
         field(p,"balanceRepo",new com.github.ezframework.jaloquent.model.ModelRepository<BalanceModel>(jdbc,BalanceModel.PREFIX,BalanceModel::new,com.github.ezframework.javaquerybuilder.query.sql.SqlDialect.MYSQL));return p;
     }
     public static void main(String[] args)throws Exception {
-        UUID payer=UUID.randomUUID(),island=UUID.randomUUID(),recipient=UUID.randomUUID();
+        UUID payer=UUID.randomUUID(),subject=UUID.randomUUID(),recipient=UUID.randomUUID();
         CountDownLatch paused=new CountDownLatch(1),release=new CountDownLatch(1),entered=new CountDownLatch(1);
         try(Connection real=DriverManager.getConnection("jdbc:h2:mem:shared;MODE=MySQL;DATABASE_TO_LOWER=TRUE")){
             real.createStatement().execute("CREATE TABLE balances(id VARCHAR(69) PRIMARY KEY,uuid VARCHAR(36),currency VARCHAR(32),balance DOUBLE)");
             try(var s=real.prepareStatement("INSERT INTO balances VALUES(?,?,?,1000)")){s.setString(1,BalanceModel.idFor(payer,"j"));s.setString(2,payer.toString());s.setString(3,"j");s.executeUpdate();}
-            Method schema=IslandSpendLedger.class.getDeclaredMethod("schema",Connection.class,boolean.class);schema.setAccessible(true);schema.invoke(null,real,true);
+            Method schema=SqlSpendingLedger.class.getDeclaredMethod("schema",Connection.class,boolean.class);schema.setAccessible(true);schema.invoke(null,real,true);
             Connection c=(Connection)Proxy.newProxyInstance(SharedConnectionRegression.class.getClassLoader(),new Class<?>[]{Connection.class},(proxy,m,a)->{
-                if(m.getName().equals("prepareStatement")&&a[0].toString().startsWith("INSERT INTO jiujiu_island_spend_orders")){
+                if(m.getName().equals("prepareStatement")&&a[0].toString().startsWith("INSERT INTO ezeconomy_spend_orders")){
                     paused.countDown();if(!release.await(5,TimeUnit.SECONDS))throw new SQLException("test timeout");throw new SQLException("injected statistics failure");
                 }
                 try{return m.invoke(real,a);}catch(InvocationTargetException e){throw e.getCause();}
@@ -35,7 +35,7 @@ public final class SharedConnectionRegression {
             var provider=provider(c);
             ExecutorService workers=Executors.newFixedThreadPool(5);
             try{
-                Future<?> debit=workers.submit(()->{synchronized(c){try{IslandSpendLedger.withdraw(c,"balances",true,payer,island,"j",100);throw new AssertionError("must fail");}catch(SQLException expected){if(!expected.getMessage().equals("injected statistics failure"))throw new RuntimeException(expected);}}});
+                Future<?> debit=workers.submit(()->{synchronized(c){try{SqlSpendingLedger.withdraw(c,"balances",true,payer,subject,"j",100);throw new AssertionError("must fail");}catch(SQLException expected){if(!expected.getMessage().equals("injected statistics failure"))throw new RuntimeException(expected);}}});
                 if(!paused.await(5,TimeUnit.SECONDS))throw new AssertionError("debit did not pause");
                 Future<?> deposit=workers.submit(()->{entered.countDown();if(!dao.depositAndGetBalance(payer,"j",50).isSuccess())throw new AssertionError("deposit failed");});
                 if(!entered.await(5,TimeUnit.SECONDS))throw new AssertionError("deposit worker did not start");
@@ -54,9 +54,9 @@ public final class SharedConnectionRegression {
                 if(provider.transfer(recipient,payer,"j",31,31).isSuccess())throw new AssertionError("insufficient transfer accepted");
                 if(provider.getBalance(recipient,"j")!=30)throw new AssertionError("declined transfer changed funds");
                 if(!provider.transfer(recipient,recipient,"j",5,4).isSuccess()||provider.getBalance(recipient,"j")!=29)throw new AssertionError("self transfer fee incorrect");
-                try(var s=real.createStatement();var r=s.executeQuery("SELECT COUNT(*) FROM jiujiu_island_spend")){r.next();if(r.getInt(1)!=0)throw new AssertionError("transfer counted as consumption");}
+                try(var s=real.createStatement();var r=s.executeQuery("SELECT COUNT(*) FROM ezeconomy_spend")){r.next();if(r.getInt(1)!=0)throw new AssertionError("transfer counted as consumption");}
                 System.out.println("SHARED_CONNECTION_REGRESSION_PASS");
             }finally{release.countDown();workers.shutdownNow();}
-        }finally{IslandSpendLedger.close();}
+        }finally{SqlSpendingLedger.close();}
     }
 }

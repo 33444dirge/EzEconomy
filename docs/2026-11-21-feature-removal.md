@@ -28,6 +28,6 @@
 
 JDK 25 下执行 `mvn clean package`，六个模块全部构建成功。共 220 项测试：219 项通过，0 失败、0 错误；1 项 Redis 集成测试因本机没有 Redis 服务而跳过。Bukkit 主模块 139 项，PAPI 74 项，两个 Bungee 模块各 3 项。Velocity 完成编译和打包，当前无测试用例。
 
-已检查清理构建生成的主 JAR：银行命令/事件/模型、每日奖励和 CurrencyUtil 等已删除类均不在包中；钱包、付款和岛屿消费账本类保留。新插件文件：`D:/桌面/JiuJiu/dist/EzEconomy-3.2.0-jiujiu.jar`，SHA-256：`915ef7316811c69a63d4f736da8c6f6b9bb20d8206b987bb9b7489225b71b1eb`。
+本次功能删减构建中，银行命令/事件/模型、每日奖励和 CurrencyUtil 等已删除类均不在包中；钱包、付款和消费账本保留。历史产物 SHA-256：`915ef7316811c69a63d4f736da8c6f6b9bb20d8206b987bb9b7489225b71b1eb`。账本接口随后已通用化，最新状态见 [维护说明](jiujiu.md)。
 
 完整日志位于项目外 `D:/code_home/ezeconomy-remove-final.log`。尚未做真实 Folia/MySQL/代理网络的客户端验收。

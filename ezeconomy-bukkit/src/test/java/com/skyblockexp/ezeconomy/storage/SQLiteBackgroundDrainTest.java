@@ -36,7 +36,7 @@ class SQLiteBackgroundDrainTest {
             assertEquals(30, storage.getBalance(account, "j"), 0.00001);
         } finally {
             storage.shutdown();
-            com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.close();
+            com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger.close();
             com.skyblockexp.ezeconomy.cache.CacheManager.close();
         }
     }

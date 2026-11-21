@@ -1,6 +1,6 @@
 package com.skyblockexp.ezeconomy.core;
 
-import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+import com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger;
 
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
 import com.skyblockexp.ezeconomy.compat.registry.RegistryCompat;
@@ -98,7 +98,7 @@ public class EzEconomyPlugin extends JavaPlugin {
             Bukkit.getServicesManager().unregister(Economy.class, vaultEconomy);
         }
         getLogger().info("EzEconomy disabled.");
-        IslandSpendLedger.close();
+        SqlSpendingLedger.close();
         com.skyblockexp.ezeconomy.util.PlayerLookup.clearCache();
         INSTANCE = null;
     }

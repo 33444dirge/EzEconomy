@@ -85,7 +85,7 @@ class RemovedFeaturesTest {
             }
         } finally {
             storage.shutdown();
-            com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.close();
+            com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger.close();
         }
     }
 

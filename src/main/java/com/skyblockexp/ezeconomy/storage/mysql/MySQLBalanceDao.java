@@ -1,6 +1,6 @@
 package com.skyblockexp.ezeconomy.storage.mysql;
 
-import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+import com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger;
 
 import com.skyblockexp.ezeconomy.api.storage.EconomyMutationResult;
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
@@ -165,10 +165,10 @@ public class MySQLBalanceDao {
     }
 
     public EconomyMutationResult withdrawAndGetBalance(UUID uuid, String currency, double amount) {
-        EconomyMutationResult ledgerResult = IslandSpendLedger.mysqlWithdraw(plugin, resolvePool(), fallback,
+        EconomyMutationResult ledgerResult = SqlSpendingLedger.mysqlWithdraw(plugin, resolvePool(), fallback,
                 table, lockManager.lockFor(BalanceModel.idFor(uuid, currency)), balanceBackgroundPersistence,
                 uuid, currency, amount);
-        if (ledgerResult != null) return IslandSpendLedger.cache(ledgerResult, cachePut, uuid, currency);
+        if (ledgerResult != null) return SqlSpendingLedger.cache(ledgerResult, cachePut, uuid, currency);
 
         String cacheKey = balanceCacheKey(uuid, currency);
         HikariDataSource activePool = resolvePool();

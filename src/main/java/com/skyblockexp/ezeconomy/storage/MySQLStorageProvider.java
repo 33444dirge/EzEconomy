@@ -1,6 +1,6 @@
 package com.skyblockexp.ezeconomy.storage;
 
-import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+import com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger;
 
 import com.skyblockexp.ezeconomy.api.storage.EconomyMutationResult;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -222,7 +222,7 @@ public class MySQLStorageProvider implements StorageProvider {
             }, 60, 60, TimeUnit.SECONDS);
         }
 
-        IslandSpendLedger.mysql(plugin, hotPathDataSource, connection, table);
+        SqlSpendingLedger.mysql(plugin, hotPathDataSource, connection, table);
 
         // Wire balance DAO to encapsulate hot-path + fallback SQL logic
         try {
@@ -246,7 +246,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 closeHotStatements();
             } catch (Throwable ignored) {}
             this.connection = connectionManager.refreshFallbackConnection();
-            IslandSpendLedger.reconnect(plugin, connection, table);
+            SqlSpendingLedger.reconnect(plugin, connection, table);
             return this.connection;
         }
     }
@@ -562,7 +562,7 @@ public class MySQLStorageProvider implements StorageProvider {
 
     @Override
     public com.skyblockexp.ezeconomy.storage.TransferResult transfer(UUID fromUuid, UUID toUuid, String currency, double debitAmount, double creditAmount) {
-        var ledgerTransfer = IslandSpendLedger.mysqlTransfer(plugin, hotPathDataSource, connection,
+        var ledgerTransfer = SqlSpendingLedger.mysqlTransfer(plugin, hotPathDataSource, connection,
                 table, fromUuid, toUuid, currency, debitAmount, creditAmount);
         if (ledgerTransfer != null) return ledgerTransfer;
 

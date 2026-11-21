@@ -71,7 +71,7 @@ public class StorageComponent implements BootstrapComponent {
     public void stop() {
         StorageProvider s = plugin.getStorage();
         if (s != null) {
-            com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.close();
+            com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger.close();
             try {
                 s.save();
             } catch (Exception ignored) {}

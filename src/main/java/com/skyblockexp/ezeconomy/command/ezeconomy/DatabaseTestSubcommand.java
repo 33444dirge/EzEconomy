@@ -1,6 +1,6 @@
 package com.skyblockexp.ezeconomy.command.ezeconomy;
 
-import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
+import com.skyblockexp.ezeconomy.service.spending.SqlSpendingLedger;
 
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
 import com.skyblockexp.ezeconomy.command.Subcommand;
@@ -50,7 +50,7 @@ public class DatabaseTestSubcommand implements Subcommand {
                 throw new Exception("Balance set/get failed: expected 100.0, got " + balance);
             }
 
-            boolean withdrawSuccess = IslandSpendLedger.excludedWithdraw(storage, testUUID, "dollar", 50.0);
+            boolean withdrawSuccess = SqlSpendingLedger.excludedWithdraw(storage, testUUID, "dollar", 50.0);
             if (!withdrawSuccess) {
                 throw new Exception("Withdraw failed");
             }
