@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 
 import java.util.UUID;
- 
+
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -60,13 +60,5 @@ public class PlaceholderBranchCoverageTest extends com.skyblockexp.ezeconomy.pap
         assertEquals("$", out);
     }
 
-    @Test
-    public void top_and_bank_invalid_parts_returnEmptyOrLoading() {
-        MockBukkit.mock();
-        com.skyblockexp.ezeconomy.papi.EzEconomyPapiPlugin papi = (com.skyblockexp.ezeconomy.papi.EzEconomyPapiPlugin) MockBukkit.load(com.skyblockexp.ezeconomy.papi.EzEconomyPapiPlugin.class);
-        com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion expansion = new com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion(papi);
 
-        assertEquals("", expansion.onPlaceholderRequest((OfflinePlayer) null, "top_1"));
-        assertEquals("", expansion.onPlaceholderRequest((OfflinePlayer) null, "bank_only"));
-    }
 }

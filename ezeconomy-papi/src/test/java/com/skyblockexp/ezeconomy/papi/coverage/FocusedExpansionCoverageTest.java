@@ -68,19 +68,6 @@ public class FocusedExpansionCoverageTest {
     }
 
     @Test
-    public void bank_balance_returns_formatted_value() {
-        TestEzEconomyStubs.SimpleStorageProvider sp = new TestEzEconomyStubs.SimpleStorageProvider();
-        sp.setBankBalance("vault", "dollar", 5.0);
-
-        com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion.TEST_ECONOMY_FOR_TESTS = new TestEzEconomyStubs.SimpleTestEz(sp, "dollar");
-
-        com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion expansion = new com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion(null);
-
-        String out = expansion.onPlaceholderRequest(null, "bank_vault_dollar");
-        assertEquals("5.00 dollar", out);
-    }
-
-    @Test
     public void top_with_empty_allbalances_sets_empty_cache() {
         TestEzEconomyStubs.SimpleStorageProvider sp = new TestEzEconomyStubs.SimpleStorageProvider();
         // no balances added -> getAllBalances returns empty map

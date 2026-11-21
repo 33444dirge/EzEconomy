@@ -18,8 +18,6 @@ import com.github.ezframework.javaquerybuilder.query.sql.SqlDialect;
 import com.skyblockexp.ezeconomy.storage.jaloquent.EzJdbcStore;
 import com.skyblockexp.ezeconomy.storage.jaloquent.EzTableRegistry;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.BalanceModel;
-import com.skyblockexp.ezeconomy.storage.jaloquent.model.BankMemberModel;
-import com.skyblockexp.ezeconomy.storage.jaloquent.model.BankModel;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.PlayerModel;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.TransactionModel;
 import java.sql.*;
@@ -36,8 +34,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.math.BigDecimal;
 import java.util.stream.Collectors;
-import com.skyblockexp.ezeconomy.api.events.BankPreTransactionEvent;
-import com.skyblockexp.ezeconomy.api.events.BankPostTransactionEvent;
 import com.skyblockexp.ezeconomy.api.events.TransactionType;
 import com.skyblockexp.ezeconomy.util.EventDispatcher;
 import com.skyblockexp.ezeconomy.cache.CacheManager;
@@ -52,7 +48,7 @@ import com.skyblockexp.ezeconomy.storage.mysql.MySQLBalanceDao;
 
 /**
  * MySQL implementation of the StorageProvider interface for EzEconomy.
- * Handles player and bank balances using a MySQL database.
+ * Handles player balances using a MySQL database.
  * Thread-safe and ready for open-source use.
  */
 public class MySQLStorageProvider implements StorageProvider {
@@ -66,8 +62,6 @@ public class MySQLStorageProvider implements StorageProvider {
     private EzJdbcStore jdbcStore;
     private ModelRepository<BalanceModel>    balanceRepo;
     private ModelRepository<PlayerModel>     playerRepo;
-    private ModelRepository<BankModel>       bankRepo;
-    private ModelRepository<BankMemberModel> bankMemberRepo;
     private ModelRepository<TransactionModel> transactionRepo;
     private final boolean balanceCacheEnabled;
     private final long balanceCacheTtlMs;
@@ -130,14 +124,6 @@ public class MySQLStorageProvider implements StorageProvider {
                         .column("id", "VARCHAR(69)").primaryKey("id")
                         .column("uuid", "VARCHAR(36)").column("currency", "VARCHAR(32)").column("balance", "DOUBLE")
                         .build(SqlDialect.MYSQL).getSql(), noParams);
-                tempJdbc.executeUpdate(QueryBuilder.createTable("banks").ifNotExists()
-                        .column("id", "VARCHAR(97)").primaryKey("id")
-                        .column("name", "VARCHAR(64)").column("currency", "VARCHAR(32)").column("balance", "DOUBLE")
-                        .build(SqlDialect.MYSQL).getSql(), noParams);
-                tempJdbc.executeUpdate(QueryBuilder.createTable("bank_members").ifNotExists()
-                        .column("id", "VARCHAR(101)").primaryKey("id")
-                        .column("bank", "VARCHAR(64)").column("uuid", "VARCHAR(36)").column("owner", "BOOLEAN")
-                        .build(SqlDialect.MYSQL).getSql(), noParams);
                 tempJdbc.executeUpdate(QueryBuilder.createTable("players").ifNotExists()
                         .column("id", "VARCHAR(36)").primaryKey("id")
                         .column("name", "VARCHAR(64)").column("displayName", "VARCHAR(128)")
@@ -199,12 +185,10 @@ public class MySQLStorageProvider implements StorageProvider {
      * inject a connection via reflection.
      */
     public void initRepositories() {
-        EzTableRegistry.registerAll(table, "players", "banks", "bank_members", "transactions");
+        EzTableRegistry.registerAll(table, "players", "transactions");
         jdbcStore       = new EzJdbcStore(connection, this::refreshFallbackConnection);
         balanceRepo     = new ModelRepository<>(jdbcStore, BalanceModel.PREFIX,    BalanceModel::new,    SqlDialect.MYSQL);
         playerRepo      = new ModelRepository<>(jdbcStore, PlayerModel.PREFIX,     PlayerModel::new,     SqlDialect.MYSQL);
-        bankRepo        = new ModelRepository<>(jdbcStore, BankModel.PREFIX,       BankModel::new,       SqlDialect.MYSQL);
-        bankMemberRepo  = new ModelRepository<>(jdbcStore, BankMemberModel.PREFIX, BankMemberModel::new, SqlDialect.MYSQL);
         transactionRepo = new ModelRepository<>(jdbcStore, TransactionModel.PREFIX,TransactionModel::new,SqlDialect.MYSQL);
         // Start background persistence and metrics after repositories are available
         try {
@@ -298,10 +282,6 @@ public class MySQLStorageProvider implements StorageProvider {
 
     private String balanceCacheKey(UUID uuid, String currency) {
         return "bal:" + uuid + ":" + currency;
-    }
-
-    private String bankBalanceCacheKey(String name, String currency) {
-        return "bank:" + name + ":" + currency;
     }
 
     private Double getCached(String key) {
@@ -685,14 +665,6 @@ public class MySQLStorageProvider implements StorageProvider {
         }
     }
 
-    // --- Bank support ---
-    private void ensureBankTables() {
-        if (!schemaInitialized) {
-            plugin.getLogger().severe("[EzEconomy] MySQL schema is not initialized. Call init() on server startup.");
-            throw new IllegalStateException("MySQL schema not initialized");
-        }
-    }
-
     private void initHotPathPool(String jdbcUrl, String username, String password) {
         boolean enabled = plugin.getConfig().getBoolean("performance.mysql.pool.enabled", dbConfig.getBoolean("mysql.pool.enabled", true));
         if (!enabled) {
@@ -784,564 +756,6 @@ public class MySQLStorageProvider implements StorageProvider {
                 return new com.skyblockexp.ezeconomy.storage.mysql.MySQLBalanceBackgroundPersistenceService.ReplayResult(false, 0, 0);
             }
             return balanceBackgroundPersistence.replayLocalSpoolNow();
-        }
-    }
-
-    public boolean createBank(String name, UUID owner) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        bankRepo.save(BankModel.create(name, "dollar", 0.0));
-                        bankMemberRepo.save(BankMemberModel.create(name, owner, true));
-                        return true;
-                    } catch (StorageException e) {
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                bankRepo.save(BankModel.create(name, "dollar", 0.0));
-                bankMemberRepo.save(BankMemberModel.create(name, owner, true));
-                return true;
-            } catch (StorageException e) {
-                return false;
-            }
-        }
-    }
-
-    public boolean deleteBank(String name) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        List<BankModel> existing = bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build());
-                        bankRepo.deleteWhere("name", name);
-                        bankMemberRepo.deleteWhere("bank", name);
-                        return !existing.isEmpty();
-                    } catch (StorageException e) {
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                List<BankModel> existing = bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build());
-                bankRepo.deleteWhere("name", name);
-                bankMemberRepo.deleteWhere("bank", name);
-                return !existing.isEmpty();
-            } catch (StorageException e) {
-                return false;
-            }
-        }
-    }
-
-    public boolean bankExists(String name) {
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                return !bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build()).isEmpty();
-            } catch (StorageException e) {
-                return false;
-            }
-        }
-    }
-
-    public double getBankBalance(String name, String currency) {
-        Double cached = getCached(bankBalanceCacheKey(name, currency));
-        if (cached != null) return cached.doubleValue();
-        if (hasHotPathPool()) {
-            String id = BankModel.idFor(name, currency);
-            try (Connection conn = hotPathDataSource.getConnection();
-                 PreparedStatement ps = conn.prepareStatement("SELECT balance FROM banks WHERE id = ?")) {
-                ps.setString(1, id);
-                try (ResultSet rs = ps.executeQuery()) {
-                    double value = rs.next() ? rs.getDouble(1) : 0.0;
-                    putCached(bankBalanceCacheKey(name, currency), value);
-                    return value;
-                }
-            } catch (SQLException ignored) {
-                return 0.0;
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                double value = bankRepo.find(BankModel.idFor(name, currency)).map(BankModel::getBalance).orElse(0.0);
-                putCached(bankBalanceCacheKey(name, currency), value);
-                return value;
-            } catch (StorageException e) {}
-            return 0.0;
-        }
-    }
-
-    public void setBankBalance(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        bankRepo.save(BankModel.create(name, currency, amount));
-                        putCached(bankBalanceCacheKey(name, currency), amount);
-                        return;
-                    } catch (StorageException e) {}
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                bankRepo.save(BankModel.create(name, currency, amount));
-                putCached(bankBalanceCacheKey(name, currency), amount);
-            } catch (StorageException e) {}
-        }
-    }
-
-    @Override
-    public boolean tryWithdrawBank(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                        if (!bankOpt.isPresent()) return false;
-                        double current = bankOpt.get().getBalance();
-
-                        BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW);
-                        if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return false;
-                        if (current < amount) return false;
-
-                        bankRepo.save(BankModel.create(name, currency, current - amount));
-                        putCached(bankBalanceCacheKey(name, currency), current - amount);
-                        EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW, true, BigDecimal.valueOf(current), BigDecimal.valueOf(current - amount)));
-                        return true;
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] MySQL tryWithdrawBank failed: " + e.getMessage());
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return false;
-                double current = bankOpt.get().getBalance();
-
-                boolean bankingEnabled = plugin.getConfig().getBoolean("banking.enabled", true);
-                if (bankingEnabled) {
-                    BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW);
-                    if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return false;
-                }
-                if (current < amount) return false;
-
-                bankRepo.save(BankModel.create(name, currency, current - amount));
-                putCached(bankBalanceCacheKey(name, currency), current - amount);
-                if (bankingEnabled) {
-                    EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW, true, BigDecimal.valueOf(current), BigDecimal.valueOf(current - amount)));
-                }
-                return true;
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL tryWithdrawBank failed: " + e.getMessage());
-                return false;
-            }
-        }
-    }
-
-    @Override
-    public void depositBank(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                        double before = bankOpt.map(BankModel::getBalance).orElse(0.0);
-
-                        BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT);
-                        if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return;
-
-                        bankRepo.save(BankModel.create(name, currency, before + amount));
-                        putCached(bankBalanceCacheKey(name, currency), before + amount);
-
-                        EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT, true, BigDecimal.valueOf(before), BigDecimal.valueOf(before + amount)));
-                        return;
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] MySQL depositBank failed: " + e.getMessage());
-                        return;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                double before = bankOpt.map(BankModel::getBalance).orElse(0.0);
-
-                boolean bankingEnabled = plugin.getConfig().getBoolean("banking.enabled", true);
-                if (bankingEnabled) {
-                    BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT);
-                    if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return;
-                }
-
-                bankRepo.save(BankModel.create(name, currency, before + amount));
-                putCached(bankBalanceCacheKey(name, currency), before + amount);
-
-                if (bankingEnabled) {
-                    EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT, true, BigDecimal.valueOf(before), BigDecimal.valueOf(before + amount)));
-                }
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL depositBank failed: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public EconomyMutationResult depositBankAndGetBalance(String name, String currency, double amount) {
-        if (hasHotPathPool()) {
-            String id = BankModel.idFor(name, currency);
-            String cacheKey = bankBalanceCacheKey(name, currency);
-            try (Connection conn = hotPathDataSource.getConnection();
-                 PreparedStatement update = conn.prepareStatement("UPDATE banks SET balance = balance + ? WHERE id = ?");
-                 PreparedStatement select = conn.prepareStatement("SELECT balance FROM banks WHERE id = ?")) {
-                update.setDouble(1, amount);
-                update.setString(2, id);
-                int rows = update.executeUpdate();
-                if (rows <= 0) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                select.setString(1, id);
-                try (ResultSet rs = select.executeQuery()) {
-                    double updated = rs.next() ? rs.getDouble(1) : 0.0;
-                    putCached(cacheKey, updated);
-                    return EconomyMutationResult.success(updated);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL depositBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        String cacheKey = bankBalanceCacheKey(name, currency);
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                    if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                    double updated = bankOpt.get().getBalance() + amount;
-                    bankRepo.save(BankModel.create(name, currency, updated));
-                    putCached(cacheKey, updated);
-                    return EconomyMutationResult.success(updated);
-                }
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL depositBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            try {
-                ensureBankTables();
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                double updated = bankOpt.get().getBalance() + amount;
-                bankRepo.save(BankModel.create(name, currency, updated));
-                putCached(cacheKey, updated);
-                return EconomyMutationResult.success(updated);
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL depositBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-    }
-
-    @Override
-    public EconomyMutationResult withdrawBankAndGetBalance(String name, String currency, double amount) {
-        if (hasHotPathPool()) {
-            String id = BankModel.idFor(name, currency);
-            String cacheKey = bankBalanceCacheKey(name, currency);
-            try (Connection conn = hotPathDataSource.getConnection();
-                 PreparedStatement withdraw = conn.prepareStatement(
-                         "UPDATE banks SET balance = balance - ? WHERE id = ? AND balance >= ?");
-                 PreparedStatement select = conn.prepareStatement("SELECT balance FROM banks WHERE id = ?")) {
-                withdraw.setDouble(1, amount);
-                withdraw.setString(2, id);
-                withdraw.setDouble(3, amount);
-                int rows = withdraw.executeUpdate();
-                select.setString(1, id);
-                try (ResultSet rs = select.executeQuery()) {
-                    if (!rs.next()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                    double current = rs.getDouble(1);
-                    if (rows <= 0) return EconomyMutationResult.failure(current, "Insufficient funds");
-                    putCached(cacheKey, current);
-                    return EconomyMutationResult.success(current);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL withdrawBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        String cacheKey = bankBalanceCacheKey(name, currency);
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                    if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                    double current = bankOpt.get().getBalance();
-                    if (current < amount) return EconomyMutationResult.failure(current, "Insufficient funds");
-                    double updated = current - amount;
-                    bankRepo.save(BankModel.create(name, currency, updated));
-                    putCached(cacheKey, updated);
-                    return EconomyMutationResult.success(updated);
-                }
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL withdrawBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            try {
-                ensureBankTables();
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                double current = bankOpt.get().getBalance();
-                if (current < amount) return EconomyMutationResult.failure(current, "Insufficient funds");
-                double updated = current - amount;
-                bankRepo.save(BankModel.create(name, currency, updated));
-                putCached(cacheKey, updated);
-                return EconomyMutationResult.success(updated);
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] MySQL withdrawBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-    }
-
-    public Set<String> getBanks() {
-        // bank list is global; use local lock for list operations to avoid distributed overhead
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                return bankRepo.query(BankModel.queryBuilder().build()).stream()
-                    .map(BankModel::getName).collect(java.util.stream.Collectors.toSet());
-            } catch (StorageException e) {
-                return ConcurrentHashMap.newKeySet();
-            }
-        }
-    }
-
-    public boolean isBankOwner(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        return bankMemberRepo.find(BankMemberModel.idFor(name, uuid)).map(BankMemberModel::isOwner).orElse(false);
-                    } catch (StorageException e) {}
-                    return false;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                return bankMemberRepo.find(BankMemberModel.idFor(name, uuid)).map(BankMemberModel::isOwner).orElse(false);
-            } catch (StorageException e) {}
-            return false;
-        }
-    }
-
-    public boolean isBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        return bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                    } catch (StorageException e) {}
-                    return false;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                return bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-            } catch (StorageException e) {}
-            return false;
-        }
-    }
-
-    public boolean addBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    if (isBankMember(name, uuid)) return false;
-                    try {
-                        bankMemberRepo.save(BankMemberModel.create(name, uuid, false));
-                        return true;
-                    } catch (StorageException e) { return false; }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            if (isBankMember(name, uuid)) return false;
-            try {
-                bankMemberRepo.save(BankMemberModel.create(name, uuid, false));
-                return true;
-            } catch (StorageException e) { return false; }
-        }
-    }
-
-    public boolean removeBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    try {
-                        boolean existed = bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                        bankMemberRepo.delete(BankMemberModel.idFor(name, uuid));
-                        return existed;
-                    } catch (StorageException e) { return false; }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            try {
-                boolean existed = bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                bankMemberRepo.delete(BankMemberModel.idFor(name, uuid));
-                return existed;
-            } catch (StorageException e) { return false; }
-        }
-    }
-
-    public Set<UUID> getBankMembers(String name) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    ensureBankTables();
-                    Set<UUID> set = ConcurrentHashMap.newKeySet();
-                    try {
-                        BankModel nameLookup = BankModel.create(name, "", 0.0);
-                        nameLookup.members(bankMemberRepo).get()
-                            .forEach(m -> { try { set.add(UUID.fromString(m.getMemberUuid())); } catch (IllegalArgumentException ignored) {} });
-                    } catch (StorageException e) {}
-                    return set;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (connectionLock()) {
-            ensureBankTables();
-            Set<UUID> set = ConcurrentHashMap.newKeySet();
-            try {
-                BankModel nameLookup = BankModel.create(name, "", 0.0);
-                nameLookup.members(bankMemberRepo).get()
-                    .forEach(m -> { try { set.add(UUID.fromString(m.getMemberUuid())); } catch (IllegalArgumentException ignored) {} });
-            } catch (StorageException e) {}
-            return set;
         }
     }
 

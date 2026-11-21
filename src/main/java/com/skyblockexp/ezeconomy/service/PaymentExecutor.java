@@ -2,8 +2,6 @@ package com.skyblockexp.ezeconomy.service;
 
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.util.MessageUtils;
-import com.skyblockexp.ezeconomy.util.CurrencyUtil;
-import com.skyblockexp.ezeconomy.storage.TransferLockManager;
 import com.skyblockexp.ezeconomy.storage.TransferResult;
 import com.skyblockexp.ezeconomy.api.events.PlayerPayPlayerEvent;
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
@@ -92,153 +90,6 @@ public class PaymentExecutor {
             return true;
         }
 
-        // Recipient currency preference
-        String recipientCurrency = plugin.getCurrencyPreferenceManager().getPreferredCurrency(toOffline.getUniqueId());
-        if (recipientCurrency != null && !recipientCurrency.equalsIgnoreCase(currency)) {
-            UUID toUuid = toOffline.getUniqueId();
-            UUID first = fromUuid.compareTo(toUuid) <= 0 ? fromUuid : toUuid;
-            UUID second = fromUuid.compareTo(toUuid) <= 0 ? toUuid : fromUuid;
-
-            // Prefer distributed locking if available
-            com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-            if (lm != null) {
-                UUID[] uuids = new UUID[]{first, second};
-                String[] tokens = null;
-                try {
-                    tokens = lm.acquireOrdered(uuids, 5000L, 50L, 100);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    tokens = null;
-                }
-                if (tokens != null) {
-                    try {
-                        double fromBalance = storage.getBalance(fromUuid, currency);
-                        debug(plugin, "PaymentExecutor: currency-preference path fromBalance=" + fromBalance + " netAmount=" + netAmount);
-                        if (fromBalance < netAmount) {
-                            debug(plugin, "PaymentExecutor: not enough money (balance < amount)");
-                            MessageUtils.send(from, plugin, "not_enough_money");
-                            return true;
-                        }
-                        boolean withdrew = com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.excludedWithdraw(storage, fromUuid, currency, netAmount);
-                        debug(plugin, "PaymentExecutor: tryWithdraw result=" + withdrew);
-                        if (!withdrew) {
-                            debug(plugin, "PaymentExecutor: withdrawFailed, aborting");
-                            MessageUtils.send(from, plugin, "not_enough_money");
-                            return true;
-                        }
-                        double creditAmount = CurrencyUtil.convert(plugin, netAmount, currency, recipientCurrency);
-                        if (Double.isNaN(creditAmount)) {
-                            storage.deposit(fromUuid, currency, netAmount);
-                            MessageUtils.send(from, plugin, "unknown_currency", java.util.Map.of("currency", recipientCurrency));
-                            return true;
-                        }
-                        debug(plugin, "PaymentExecutor: depositing " + creditAmount + " " + recipientCurrency + " to " + toOffline.getUniqueId());
-                        storage.deposit(toOffline.getUniqueId(), recipientCurrency, creditAmount);
-
-                        String payerDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(netAmount, currency);
-                        String receiverDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(creditAmount, recipientCurrency);
-                        String defaultCur = plugin.getDefaultCurrency();
-                        if (!currency.equalsIgnoreCase(defaultCur)) {
-                            double equiv = CurrencyUtil.convert(plugin, netAmount, currency, defaultCur);
-                            if (!Double.isNaN(equiv)) {
-                                String equivDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(equiv, defaultCur);
-                                MessageUtils.send(from, plugin, "paid_other_currency", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay, "amount_default", equivDisplay));
-                            } else {
-                                MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay));
-                            }
-                        } else {
-                            MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay));
-                        }
-                        if (toOffline.isOnline() && toOffline.getPlayer() != null) {
-                            if (!currency.equalsIgnoreCase(defaultCur)) {
-                                double equiv = CurrencyUtil.convert(plugin, creditAmount, recipientCurrency, defaultCur);
-                                if (!Double.isNaN(equiv)) {
-                                    String equivDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(equiv, defaultCur);
-                                    MessageUtils.send(toOffline.getPlayer(), plugin, "received_other_currency", java.util.Map.of("player", from.getName(), "amount", receiverDisplay, "amount_default", equivDisplay));
-                                } else {
-                                    MessageUtils.send(toOffline.getPlayer(), plugin, "received", java.util.Map.of("player", from.getName(), "amount", receiverDisplay));
-                                }
-                            } else {
-                                MessageUtils.send(toOffline.getPlayer(), plugin, "received", java.util.Map.of("player", from.getName(), "amount", receiverDisplay));
-                            }
-                        } else {
-                            notifyCrossServer(plugin, toOffline.getUniqueId(), toOffline.getName(), from.getName(), receiverDisplay, recipientCurrency);
-                        }
-                        return true;
-                    } finally {
-                        lm.releaseOrdered(uuids, tokens);
-                    }
-                }
-                // fallthrough to local locking
-            }
-
-            // Fallback: local in-JVM locks
-            UUID firstLocal = first;
-            UUID secondLocal = second;
-            java.util.concurrent.locks.ReentrantLock firstLock = TransferLockManager.getLock(firstLocal);
-            java.util.concurrent.locks.ReentrantLock secondLock = firstLocal.equals(secondLocal) ? firstLock : TransferLockManager.getLock(secondLocal);
-            firstLock.lock();
-            if (!firstLocal.equals(secondLocal)) secondLock.lock();
-            try {
-                double fromBalance = storage.getBalance(fromUuid, currency);
-                debug(plugin, "PaymentExecutor: currency-preference path fromBalance=" + fromBalance + " netAmount=" + netAmount);
-                if (fromBalance < netAmount) {
-                    debug(plugin, "PaymentExecutor: not enough money (balance < amount)");
-                    MessageUtils.send(from, plugin, "not_enough_money");
-                    return true;
-                }
-                boolean withdrew = com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.excludedWithdraw(storage, fromUuid, currency, netAmount);
-                debug(plugin, "PaymentExecutor: tryWithdraw result=" + withdrew);
-                if (!withdrew) {
-                    debug(plugin, "PaymentExecutor: withdraw failed, aborting");
-                    MessageUtils.send(from, plugin, "not_enough_money");
-                    return true;
-                }
-                double creditAmount = CurrencyUtil.convert(plugin, netAmount, currency, recipientCurrency);
-                if (Double.isNaN(creditAmount)) {
-                    storage.deposit(fromUuid, currency, netAmount);
-                    MessageUtils.send(from, plugin, "unknown_currency", java.util.Map.of("currency", recipientCurrency));
-                    return true;
-                }
-                debug(plugin, "PaymentExecutor: depositing " + creditAmount + " " + recipientCurrency + " to " + toOffline.getUniqueId());
-                storage.deposit(toOffline.getUniqueId(), recipientCurrency, creditAmount);
-
-                String payerDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(netAmount, currency);
-                String receiverDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(creditAmount, recipientCurrency);
-                String defaultCur = plugin.getDefaultCurrency();
-                if (!currency.equalsIgnoreCase(defaultCur)) {
-                    double equiv = CurrencyUtil.convert(plugin, netAmount, currency, defaultCur);
-                    if (!Double.isNaN(equiv)) {
-                        String equivDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(equiv, defaultCur);
-                        MessageUtils.send(from, plugin, "paid_other_currency", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay, "amount_default", equivDisplay));
-                    } else {
-                        MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay));
-                    }
-                } else {
-                    MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", payerDisplay));
-                }
-                if (toOffline.isOnline() && toOffline.getPlayer() != null) {
-                    if (!currency.equalsIgnoreCase(defaultCur)) {
-                        double equiv = CurrencyUtil.convert(plugin, creditAmount, recipientCurrency, defaultCur);
-                        if (!Double.isNaN(equiv)) {
-                            String equivDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(equiv, defaultCur);
-                            MessageUtils.send(toOffline.getPlayer(), plugin, "received_other_currency", java.util.Map.of("player", from.getName(), "amount", receiverDisplay, "amount_default", equivDisplay));
-                        } else {
-                            MessageUtils.send(toOffline.getPlayer(), plugin, "received", java.util.Map.of("player", from.getName(), "amount", receiverDisplay));
-                        }
-                    } else {
-                        MessageUtils.send(toOffline.getPlayer(), plugin, "received", java.util.Map.of("player", from.getName(), "amount", receiverDisplay));
-                    }
-                } else {
-                    notifyCrossServer(plugin, toOffline.getUniqueId(), toOffline.getName(), from.getName(), receiverDisplay, recipientCurrency);
-                }
-                return true;
-            } finally {
-                if (!firstLocal.equals(secondLocal)) secondLock.unlock();
-                firstLock.unlock();
-            }
-        }
-
         // Simple transfer
         debug(plugin, "PaymentExecutor: performing simple transfer via storage.transfer");
         TransferResult transfer = storage.transfer(fromUuid, toOffline.getUniqueId(), currency, netAmount);
@@ -253,18 +104,7 @@ public class PaymentExecutor {
         }
 
         String amountWithSymbol = plugin.getCurrencyFormatter().formatPriceForMessage(netAmount, currency);
-        String defaultCur = plugin.getDefaultCurrency();
-        if (!currency.equalsIgnoreCase(defaultCur)) {
-            double equiv = CurrencyUtil.convert(plugin, netAmount, currency, defaultCur);
-            if (!Double.isNaN(equiv)) {
-                String equivDisplay = plugin.getCurrencyFormatter().formatPriceForMessage(equiv, defaultCur);
-                MessageUtils.send(from, plugin, "paid_other_currency", java.util.Map.of("player", toOffline.getName(), "amount", amountWithSymbol, "amount_default", equivDisplay));
-            } else {
-                MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", amountWithSymbol));
-            }
-        } else {
-            MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toOffline.getName(), "amount", amountWithSymbol));
-        }
+        MessageUtils.send(from, plugin, "paid", java.util.Map.of("player", toName, "amount", amountWithSymbol));
         if (toOffline.isOnline() && toOffline.getPlayer() != null) {
             MessageUtils.send(toOffline.getPlayer(), plugin, "received", java.util.Map.of("player", from.getName(), "amount", amountWithSymbol));
         } else {

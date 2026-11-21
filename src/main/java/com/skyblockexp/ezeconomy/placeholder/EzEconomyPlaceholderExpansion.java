@@ -76,9 +76,6 @@ public class EzEconomyPlaceholderExpansion extends PlaceholderExpansion {
                 return resolveSymbol(context, split[1]);
             }
 
-            if (split.length >= 2 && split[0].equals("bank")) {
-                return resolveBank(context, split);
-            }
 
             if (split.length == 2 && split[0].equals("top")) {
                 return resolveTop(context, split[1]);
@@ -149,24 +146,6 @@ public class EzEconomyPlaceholderExpansion extends PlaceholderExpansion {
             return "$";
         }
         return "?";
-    }
-
-    private String resolveBank(RequestContext context, String[] split) {
-        if (!context.plugin.getConfig().getBoolean("banking.enabled", true)) {
-            return null;
-        }
-        if (context.player == null || context.storage == null) {
-            return null;
-        }
-
-        String bank = split[1];
-        String currency = split.length == 3 ? split[2] : context.preferredCurrency;
-        if (!context.storage.isBankMember(bank, context.player.getUniqueId())) {
-            return "-";
-        }
-
-        double amount = context.storage.getBankBalance(bank, currency);
-        return context.currencyFormatter.format(amount, currency);
     }
 
     private String resolveTop(RequestContext context, String rankText) {

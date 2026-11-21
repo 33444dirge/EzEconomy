@@ -44,10 +44,9 @@ public class ExhaustiveExpansionPathsTest {
         String sym = expansion.onPlaceholderRequest(null, "symbol_dollar");
         assertNotNull(sym);
 
-        // bank path with existing bank
-        sp.setBankBalance("vault", "dollar", 5.5);
+        // Removed bank placeholders stay unsupported.
         String bank = expansion.onPlaceholderRequest(null, "bank_vault_dollar");
-        assertTrue(bank.contains("5.50") || bank.length() > 0);
+        assertEquals("", bank);
 
         // top variants: clear cache then invoke
         String cacheKey = "top:dollar:2";

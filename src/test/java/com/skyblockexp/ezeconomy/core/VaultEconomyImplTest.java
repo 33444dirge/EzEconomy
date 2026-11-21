@@ -64,17 +64,4 @@ class VaultEconomyImplTest {
         org.mockito.Mockito.verify(storage, never()).getBalance(id, "dollar");
     }
 
-    @Test
-    void testBankDeposit_usesMutationFastPath() {
-        org.mockito.Mockito.when(plugin.getDefaultCurrency()).thenReturn("dollar");
-        org.mockito.Mockito.when(plugin.getConfig()).thenReturn(new org.bukkit.configuration.file.YamlConfiguration());
-        org.mockito.Mockito.when(storage.depositBankAndGetBalance("guild", "dollar", 5.0))
-                .thenReturn(EconomyMutationResult.success(105.0));
-
-        var res = vault.bankDeposit("guild", 5.0);
-        assertEquals(net.milkbowl.vault.economy.EconomyResponse.ResponseType.SUCCESS, res.type);
-        org.mockito.Mockito.verify(storage).depositBankAndGetBalance("guild", "dollar", 5.0);
-        org.mockito.Mockito.verify(storage, never()).bankExists("guild");
-        org.mockito.Mockito.verify(storage, never()).getBankBalance("guild", "dollar");
-    }
 }

@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 public class BalanceGui {
-    public static void open(EzEconomyPlugin plugin, Player player, Map<String, Double> currencies, Map<String, Double> banks) {
+    public static void open(EzEconomyPlugin plugin, Player player, Map<String, Double> currencies) {
         int size = 27;
         String title = plugin.getUserGuiConfig().getString("title.balance", "\u00A7aYour Balances");
         Inventory inv = Bukkit.createInventory(new GuiInventoryHolder("balance"), size, GuiUtils.formatMiniMessage(title));
@@ -23,14 +23,6 @@ public class BalanceGui {
             // Use plugin short-formatting (k/m/b/t) for GUI display
             String formatted = plugin.getCurrencyFormatter().formatShort(entry.getValue(), entry.getKey());
             meta.setDisplayName("\u00A7e" + entry.getKey() + ": \u00A76" + formatted);
-            item.setItemMeta(meta);
-            inv.setItem(slot++, item);
-        }
-        for (Map.Entry<String, Double> entry : banks.entrySet()) {
-            ItemStack item = new ItemStack(Material.ENDER_CHEST);
-            ItemMeta meta = item.getItemMeta();
-            String formatted = plugin.getCurrencyFormatter().formatShort(entry.getValue(), entry.getKey());
-            meta.setDisplayName("\u00A7bBank: " + entry.getKey() + "\u00A7f - \u00A7a" + formatted);
             item.setItemMeta(meta);
             inv.setItem(slot++, item);
         }

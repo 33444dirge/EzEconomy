@@ -91,11 +91,9 @@ If `/balance` returns an error, check that Vault is installed and that the conso
 
 | I want to... | Go here |
 | --- | --- |
-| Configure storage, currencies, banking, and caching | [Configuration](configuration) |
 | See all player and admin commands | [Commands](commands) |
 | Set up permissions for staff and players | [Permissions](permissions) |
 | Monitor and adjust player economies | [Moderation Guide](moderation) |
 | Show balances in chat or scoreboards | [Placeholders](placeholders) |
-| Enable multi-currency or the bank system | [Features](feature/) |
 | Set up cross-server payments (Velocity/BungeeCord/Redis) | [Cross-server messaging](feature/cross-server) |
 | Deploy on a Velocity proxy network | [Velocity integration](integration/velocity) |

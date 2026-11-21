@@ -9,7 +9,6 @@ public class EzEconomyMetrics {
     private final Metrics metrics;
     private final AtomicLong lastSentDepositedCents = new AtomicLong(0L);
     private final AtomicLong lastSentWithdrawnCents = new AtomicLong(0L);
-    private final AtomicLong lastSentConvertedCents = new AtomicLong(0L);
 
     public EzEconomyMetrics(org.bukkit.plugin.Plugin plugin) {
         // In test mode we avoid constructing bStats Metrics to prevent errors
@@ -56,13 +55,6 @@ public class EzEconomyMetrics {
                             return (int) (delta / 100);
                         }));
 
-                        m.addCustomChart(new SingleLineChart("amount_converted", () -> {
-                            long current = ez.getTransactionMetricsService().getTotalConvertedCents();
-                            long last = lastSentConvertedCents.getAndSet(current);
-                            long delta = current - last;
-                            if (delta < 0) delta = 0;
-                            return (int) (delta / 100);
-                        }));
                     } catch (Throwable ignoredInner) {
                         // Ignore if casting or chart creation fails
                     }

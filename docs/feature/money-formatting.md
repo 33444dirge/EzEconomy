@@ -18,7 +18,6 @@ This page summarizes recommended options for formatting money amounts in EzEcono
 - **long (cents):** Store integer cents (e.g., 12345 = $123.45). Fast and safe for atomic operations.
 - **BigDecimal:** Use for complex financial logic where fractional cents and arbitrary precision are required. Always specify scale and `RoundingMode` where necessary.
 
-Recommendation: Use `long` for typical Minecraft economy (scaled by 100) and `BigDecimal` if you need higher precision or currency conversions.
 
 ## Formatting options
 
@@ -33,7 +32,6 @@ Recommendation: Use `long` for typical Minecraft economy (scaled by 100) and `Bi
 
 ## Compact / Short formats
 
-- **Human-readable suffixes:** Convert large numbers to `1.2K`, `3.4M`, `2B` for UI compactness. Provide configurable thresholds and suffixes.
 - **Precision for short formats:** Usually 1 decimal place (e.g., `1.2K`). Configurable.
 
 ## Minecraft-specific presentation

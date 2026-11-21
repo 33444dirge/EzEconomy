@@ -23,7 +23,6 @@ class GuiIoTest {
         when(plugin.getDefaultCurrency()).thenReturn("j");
         StorageProvider storage = mock(StorageProvider.class);
         when(plugin.getStorageOrWarn()).thenReturn(storage);
-        when(storage.getBanks()).thenReturn(Set.of());
         AtomicReference<Runnable> submitted = new AtomicReference<>();
         when(plugin.submitIo(any())).thenAnswer(call -> { submitted.set(call.getArgument(0)); return true; });
         new BalanceAction().open(plugin, player);

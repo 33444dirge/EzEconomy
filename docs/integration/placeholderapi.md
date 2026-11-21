@@ -8,7 +8,6 @@ parent: Integrations
 
 Overview
 
-- EzEconomy provides a PlaceholderAPI (PAPI) expansion so server owners can display balances, symbols, top lists and bank data in chat, scoreboards and GUIs.
 
 Why enable
 
@@ -28,7 +27,6 @@ Available placeholders
 - `%ezeconomy_balance_<currency>%` — balance in specific currency (e.g., `%ezeconomy_balance_dollar%`).
 - `%ezeconomy_symbol_<currency>%` — currency symbol (e.g., `%ezeconomy_symbol_dollar%`).
 - `%ezeconomy_top_<n>_<currency>%` — top `n` players for given currency (e.g., `%ezeconomy_top_10_dollar%`).
-- `%ezeconomy_bank_<name>_<currency>%` — bank balance for named bank.
 
 Caching and performance
 

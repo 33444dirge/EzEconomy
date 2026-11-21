@@ -9,7 +9,6 @@ This page covers the setup, table/collection schemas, and data-safety guidance f
 
 ## Overview
 
-EzEconomy supports multiple storage backends to store player balances, bank data, and transactions:
 
 - **YML**: File-based storage using YAML files (no database required)
 - **SQLite**: Local SQLite database file
@@ -31,7 +30,6 @@ Each provider has its own configuration file (e.g., `config-sqlite.yml`) that is
 ## YML Storage Provider
 
 ### Description
-Stores data in YAML files on the filesystem. Each player has their own file, and bank data is stored in the owner's file.
 
 ### Setup
 
@@ -55,8 +53,6 @@ Stores data in YAML files on the filesystem. Each player has their own file, and
   balances:
     dollar: 100.0
     euro: 50.0
-  banks:
-    mybank:
       balances:
         dollar: 500.0
       owners:
@@ -84,7 +80,6 @@ Uses a local SQLite database file for all data storage.
    sqlite:
      file: "ezeconomy.db"  # Database file name
      table: "balances"     # Player balances table
-     banksTable: "banks"   # Bank data table
    ```
 
 3. No additional setup required - database and tables are created automatically.
@@ -102,10 +97,8 @@ CREATE TABLE balances (
 );
 ```
 
-#### banks
 
 ```sql
-CREATE TABLE banks (
     name TEXT PRIMARY KEY,
     owner TEXT,
     members TEXT,  -- Comma-separated UUIDs
@@ -124,14 +117,10 @@ CREATE TABLE transactions (
 );
 ```
 
-#### bank_members (optional, for advanced member management)
 
 ```sql
-CREATE TABLE bank_members (
-    bank TEXT,
     uuid TEXT,
     owner BOOLEAN,
-    PRIMARY KEY (bank, uuid)
 );
 ```
 
@@ -177,10 +166,8 @@ CREATE TABLE balances (
 );
 ```
 
-#### banks
 
 ```sql
-CREATE TABLE banks (
     name VARCHAR(64),
     currency VARCHAR(32),
     balance DOUBLE,
@@ -188,14 +175,10 @@ CREATE TABLE banks (
 );
 ```
 
-#### bank_members
 
 ```sql
-CREATE TABLE bank_members (
-    bank VARCHAR(64),
     uuid VARCHAR(36),
     owner BOOLEAN,
-    PRIMARY KEY (bank, uuid)
 );
 ```
 
@@ -225,7 +208,6 @@ Uses MongoDB for NoSQL document-based storage.
      uri: "mongodb://localhost:27017"
      database: "ezeconomy"
      collection: "balances"
-     banksCollection: "banks"
    ```
 
 3. Ensure MongoDB is running and accessible.
@@ -247,12 +229,10 @@ Uses MongoDB for NoSQL document-based storage.
 // { uuid: 1, currency: 1 } (compound index for fast lookups)
 ```
 
-#### banks
 
 ```javascript
 {
   "_id": ObjectId("..."),
-  "name": "bank-name",
   "owner": "owner-uuid",
   "members": ["owner-uuid", "member-uuid-1"],
   "balances": {

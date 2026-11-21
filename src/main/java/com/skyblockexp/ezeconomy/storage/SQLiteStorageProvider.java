@@ -23,8 +23,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.math.BigDecimal;
-import com.skyblockexp.ezeconomy.api.events.BankPreTransactionEvent;
-import com.skyblockexp.ezeconomy.api.events.BankPostTransactionEvent;
 import com.skyblockexp.ezeconomy.api.events.TransactionType;
 import com.skyblockexp.ezeconomy.util.EventDispatcher;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -35,8 +33,6 @@ import com.github.ezframework.javaquerybuilder.query.sql.SqlDialect;
 import com.skyblockexp.ezeconomy.storage.jaloquent.EzSQLiteJdbcStore;
 import com.skyblockexp.ezeconomy.storage.jaloquent.EzTableRegistry;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.BalanceModel;
-import com.skyblockexp.ezeconomy.storage.jaloquent.model.BankMemberModel;
-import com.skyblockexp.ezeconomy.storage.jaloquent.model.BankModel;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.PlayerModel;
 import com.skyblockexp.ezeconomy.storage.jaloquent.model.TransactionModel;
 import com.skyblockexp.ezeconomy.cache.CacheManager;
@@ -46,7 +42,7 @@ import com.skyblockexp.ezeconomy.storage.sqlite.SQLiteBackgroundPersistenceServi
 
 /**
  * SQLite implementation of the StorageProvider interface for EzEconomy.
- * Handles player and bank balances using a local SQLite database.
+ * Handles player balances using a local SQLite database.
  * Thread-safe and ready for open-source use.
  *
  * <p>Usage: Instantiate with plugin and config, or call init() if using the default constructor.</p>
@@ -62,8 +58,6 @@ public class SQLiteStorageProvider implements StorageProvider {
     private EzSQLiteJdbcStore jdbcStore;
     private ModelRepository<BalanceModel>     balanceRepo;
     private ModelRepository<PlayerModel>      playerRepo;
-    private ModelRepository<BankModel>        bankRepo;
-    private ModelRepository<BankMemberModel>  bankMemberRepo;
     private ModelRepository<TransactionModel> transactionRepo;
     private final boolean balanceCacheEnabled;
     private final long balanceCacheTtlMs;
@@ -112,14 +106,6 @@ public class SQLiteStorageProvider implements StorageProvider {
                     .column("id", "TEXT").primaryKey("id")
                     .column("name", "TEXT").column("displayName", "TEXT")
                     .build(SqlDialect.SQLITE).getSql(), noParams);
-            tempJdbc.executeUpdate(QueryBuilder.createTable("banks").ifNotExists()
-                    .column("id", "TEXT").primaryKey("id")
-                    .column("name", "TEXT").column("currency", "TEXT").column("balance", "DOUBLE")
-                    .build(SqlDialect.SQLITE).getSql(), noParams);
-            tempJdbc.executeUpdate(QueryBuilder.createTable("bank_members").ifNotExists()
-                    .column("id", "TEXT").primaryKey("id")
-                    .column("bank", "TEXT").column("uuid", "TEXT").column("owner", "INTEGER")
-                    .build(SqlDialect.SQLITE).getSql(), noParams);
             tempJdbc.executeUpdate(QueryBuilder.createTable("transactions").ifNotExists()
                     .column("id", "TEXT").primaryKey("id")
                     .column("uuid", "TEXT").column("currency", "TEXT").column("amount", "DOUBLE").column("timestamp", "INTEGER")
@@ -148,10 +134,6 @@ public class SQLiteStorageProvider implements StorageProvider {
 
     private String balanceCacheKey(UUID uuid, String currency) {
         return "bal:" + uuid + ":" + currency;
-    }
-
-    private String bankBalanceCacheKey(String name, String currency) {
-        return "bank:" + name + ":" + currency;
     }
 
     private Double getCached(String key) {
@@ -272,12 +254,10 @@ public class SQLiteStorageProvider implements StorageProvider {
      * Called automatically at the end of the config constructor.
      */
     public void initRepositories() {
-        EzTableRegistry.registerAll(table, "players", "banks", "bank_members", "transactions");
+        EzTableRegistry.registerAll(table, "players", "transactions");
         jdbcStore       = new EzSQLiteJdbcStore(connection);
         balanceRepo     = new ModelRepository<>(jdbcStore, BalanceModel.PREFIX,    BalanceModel::new,    SqlDialect.SQLITE);
         playerRepo      = new ModelRepository<>(jdbcStore, PlayerModel.PREFIX,     PlayerModel::new,     SqlDialect.SQLITE);
-        bankRepo        = new ModelRepository<>(jdbcStore, BankModel.PREFIX,       BankModel::new,       SqlDialect.SQLITE);
-        bankMemberRepo  = new ModelRepository<>(jdbcStore, BankMemberModel.PREFIX, BankMemberModel::new, SqlDialect.SQLITE);
         transactionRepo = new ModelRepository<>(jdbcStore, TransactionModel.PREFIX,TransactionModel::new,SqlDialect.SQLITE);
         IslandSpendLedger.sqlite(plugin, connection, lock, table);
     }
@@ -612,461 +592,6 @@ public class SQLiteStorageProvider implements StorageProvider {
         psDepositUpsert = null;
         psWithdrawIfEnough = null;
         psSelectBalanceById = null;
-    }
-
-    // --- Bank support ---
-
-    @Override
-    public boolean createBank(String name, UUID owner) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        if (bankExists(name)) return false;
-                        bankRepo.save(BankModel.create(name, "dollar", 0.0));
-                        bankMemberRepo.save(BankMemberModel.create(name, owner, true));
-                        return true;
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] SQLite createBank failed: " + e.getMessage());
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                if (bankExists(name)) return false;
-                bankRepo.save(BankModel.create(name, "dollar", 0.0));
-                bankMemberRepo.save(BankMemberModel.create(name, owner, true));
-                return true;
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite createBank failed: " + e.getMessage());
-                return false;
-            }
-        }
-    }
-
-    @Override
-    public boolean deleteBank(String name) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        java.util.List<BankModel> existing = bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build());
-                        bankRepo.deleteWhere("name", name);
-                        bankMemberRepo.deleteWhere("bank", name);
-                        return !existing.isEmpty();
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] SQLite deleteBank failed: " + e.getMessage());
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                java.util.List<BankModel> existing = bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build());
-                bankRepo.deleteWhere("name", name);
-                bankMemberRepo.deleteWhere("bank", name);
-                return !existing.isEmpty();
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite deleteBank failed: " + e.getMessage());
-                return false;
-            }
-        }
-    }
-
-    @Override
-    public boolean bankExists(String name) {
-        synchronized (lock) {
-            try {
-                return !bankRepo.query(BankModel.queryBuilder().whereEquals("name", name).build()).isEmpty();
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite bankExists failed: " + e.getMessage());
-                return false;
-            }
-        }
-    }
-
-    @Override
-    public double getBankBalance(String name, String currency) {
-        Double cached = getCached(bankBalanceCacheKey(name, currency));
-        if (cached != null) return cached.doubleValue();
-        synchronized (lock) {
-            try {
-                double value = bankRepo.find(BankModel.idFor(name, currency)).map(BankModel::getBalance).orElse(0.0);
-                putCached(bankBalanceCacheKey(name, currency), value);
-                return value;
-            } catch (StorageException e) {}
-            return 0.0;
-        }
-    }
-
-    @Override
-    public void setBankBalance(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        bankRepo.save(BankModel.create(name, currency, amount));
-                        putCached(bankBalanceCacheKey(name, currency), amount);
-                        return;
-                    } catch (StorageException e) {}
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                bankRepo.save(BankModel.create(name, currency, amount));
-                putCached(bankBalanceCacheKey(name, currency), amount);
-            } catch (StorageException e) {}
-        }
-    }
-
-    @Override
-    public boolean tryWithdrawBank(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                        if (!bankOpt.isPresent()) return false;
-                        double current = bankOpt.get().getBalance();
-                        BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW);
-                        if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return false;
-                        if (current < amount) return false;
-                        bankRepo.save(BankModel.create(name, currency, current - amount));
-                        putCached(bankBalanceCacheKey(name, currency), current - amount);
-                        EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW, true, BigDecimal.valueOf(current), BigDecimal.valueOf(current - amount)));
-                        return true;
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] SQLite tryWithdrawBank failed: " + e.getMessage());
-                        return false;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return false;
-                double current = bankOpt.get().getBalance();
-                BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW);
-                if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return false;
-                if (current < amount) return false;
-                bankRepo.save(BankModel.create(name, currency, current - amount));
-                putCached(bankBalanceCacheKey(name, currency), current - amount);
-                EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_WITHDRAW, true, BigDecimal.valueOf(current), BigDecimal.valueOf(current - amount)));
-                return true;
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite tryWithdrawBank failed: " + e.getMessage());
-                return false;
-            }
-        }
-    }
-
-    @Override
-    public void depositBank(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                        double before = bankOpt.map(BankModel::getBalance).orElse(0.0);
-                        BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT);
-                        if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return;
-                        bankRepo.save(BankModel.create(name, currency, before + amount));
-                        putCached(bankBalanceCacheKey(name, currency), before + amount);
-                        EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT, true, BigDecimal.valueOf(before), BigDecimal.valueOf(before + amount)));
-                        return;
-                    } catch (StorageException e) {
-                        plugin.getLogger().severe("[EzEconomy] SQLite depositBank failed: " + e.getMessage());
-                        return;
-                    }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                double before = bankOpt.map(BankModel::getBalance).orElse(0.0);
-                BankPreTransactionEvent pre = new BankPreTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT);
-                if (!EventDispatcher.fireSyncAndAllow(plugin, pre)) return;
-                bankRepo.save(BankModel.create(name, currency, before + amount));
-                putCached(bankBalanceCacheKey(name, currency), before + amount);
-                EventDispatcher.fireSync(plugin, new BankPostTransactionEvent(name, null, BigDecimal.valueOf(amount), TransactionType.BANK_DEPOSIT, true, BigDecimal.valueOf(before), BigDecimal.valueOf(before + amount)));
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite depositBank failed: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public EconomyMutationResult depositBankAndGetBalance(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        String cacheKey = bankBalanceCacheKey(name, currency);
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                    if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                    double updated = bankOpt.get().getBalance() + amount;
-                    bankRepo.save(BankModel.create(name, currency, updated));
-                    putCached(cacheKey, updated);
-                    return EconomyMutationResult.success(updated);
-                }
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite depositBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                double updated = bankOpt.get().getBalance() + amount;
-                bankRepo.save(BankModel.create(name, currency, updated));
-                putCached(cacheKey, updated);
-                return EconomyMutationResult.success(updated);
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite depositBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-    }
-
-    @Override
-    public EconomyMutationResult withdrawBankAndGetBalance(String name, String currency, double amount) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        String cacheKey = bankBalanceCacheKey(name, currency);
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                    if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                    double current = bankOpt.get().getBalance();
-                    if (current < amount) return EconomyMutationResult.failure(current, "Insufficient funds");
-                    double updated = current - amount;
-                    bankRepo.save(BankModel.create(name, currency, updated));
-                    putCached(cacheKey, updated);
-                    return EconomyMutationResult.success(updated);
-                }
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite withdrawBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                java.util.Optional<BankModel> bankOpt = bankRepo.find(BankModel.idFor(name, currency));
-                if (!bankOpt.isPresent()) return EconomyMutationResult.failure(0.0, "Bank does not exist");
-                double current = bankOpt.get().getBalance();
-                if (current < amount) return EconomyMutationResult.failure(current, "Insufficient funds");
-                double updated = current - amount;
-                bankRepo.save(BankModel.create(name, currency, updated));
-                putCached(cacheKey, updated);
-                return EconomyMutationResult.success(updated);
-            } catch (Exception e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite withdrawBankAndGetBalance failed: " + e.getMessage());
-                return EconomyMutationResult.failure(0.0, "Storage failure");
-            }
-        }
-    }
-
-    @Override
-    public Set<String> getBanks() {
-        synchronized (lock) {
-            try {
-                return bankRepo.query(BankModel.queryBuilder().build()).stream()
-                    .map(BankModel::getName).collect(java.util.stream.Collectors.toSet());
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite getBanks failed: " + e.getMessage());
-                return new HashSet<>();
-            }
-        }
-    }
-
-    @Override
-    public boolean isBankOwner(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        return bankMemberRepo.find(BankMemberModel.idFor(name, uuid)).map(BankMemberModel::isOwner).orElse(false);
-                    } catch (StorageException e) {}
-                    return false;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                return bankMemberRepo.find(BankMemberModel.idFor(name, uuid)).map(BankMemberModel::isOwner).orElse(false);
-            } catch (StorageException e) {}
-            return false;
-        }
-    }
-
-    @Override
-    public boolean isBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        return bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                    } catch (StorageException e) {}
-                    return false;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                return bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-            } catch (StorageException e) {}
-            return false;
-        }
-    }
-
-    @Override
-    public boolean addBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    if (isBankMember(name, uuid)) return false;
-                    try {
-                        bankMemberRepo.save(BankMemberModel.create(name, uuid, false));
-                        return true;
-                    } catch (StorageException e) { return false; }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            if (isBankMember(name, uuid)) return false;
-            try {
-                bankMemberRepo.save(BankMemberModel.create(name, uuid, false));
-                return true;
-            } catch (StorageException e) { return false; }
-        }
-    }
-
-    @Override
-    public boolean removeBankMember(String name, UUID uuid) {
-        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-        UUID bankId = UUID.nameUUIDFromBytes(name.getBytes());
-        if (lm != null) {
-            String token = null;
-            try {
-                token = lm.acquire(bankId, plugin.getLockTtlMs(), plugin.getLockRetryMs(), plugin.getLockMaxAttempts());
-                if (token != null) {
-                    try {
-                        boolean existed = bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                        bankMemberRepo.delete(BankMemberModel.idFor(name, uuid));
-                        return existed;
-                    } catch (StorageException e) { return false; }
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (token != null) lm.release(bankId, token);
-            }
-        }
-        synchronized (lock) {
-            try {
-                boolean existed = bankMemberRepo.exists(BankMemberModel.idFor(name, uuid));
-                bankMemberRepo.delete(BankMemberModel.idFor(name, uuid));
-                return existed;
-            } catch (StorageException e) { return false; }
-        }
-    }
-
-    @Override
-    public Set<UUID> getBankMembers(String name) {
-        Set<UUID> set = new HashSet<>();
-        synchronized (lock) {
-            try {
-                // Navigate via the BankModel.members() relationship: creates a lookup
-                // instance with the bank name set to drive the HasMany query.
-                BankModel nameLookup = BankModel.create(name, "", 0.0);
-                nameLookup.members(bankMemberRepo).get()
-                    .forEach(m -> { try { set.add(UUID.fromString(m.getMemberUuid())); } catch (IllegalArgumentException ignored) {} });
-            } catch (StorageException e) {
-                plugin.getLogger().severe("[EzEconomy] SQLite getBankMembers failed: " + e.getMessage());
-            }
-        }
-        return set;
     }
 
     @Override

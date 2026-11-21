@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 public class EzEconomyCommandTabCompleter implements TabCompleter {
     private final EzEconomyPlugin plugin;
     private static final List<String> SUBCOMMANDS = Arrays.asList(
-            "cleanup", "dailyreset", "reload", "reloadmessages", "database", "spool"
+            "cleanup", "reload", "reloadmessages", "database", "spool"
     );
     private static final List<String> DATABASE_SUBS = Arrays.asList(
             "info", "test", "reset"

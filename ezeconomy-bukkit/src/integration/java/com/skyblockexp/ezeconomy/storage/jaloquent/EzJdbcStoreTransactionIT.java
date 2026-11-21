@@ -47,7 +47,7 @@ public class EzJdbcStoreTransactionIT {
         // EzTableRegistryTest) may have registered "balances" under a
         // different physical name.  Re-register with the exact table name
         // this test creates so that save/find SQL targets the right table.
-        EzTableRegistry.registerAll("balances", "players", "banks", "bank_members", "transactions");
+        EzTableRegistry.registerAll("balances", "players", "transactions");
         store = new EzJdbcStore(conn);
         repo  = new ModelRepository<>(store, BalanceModel.PREFIX, BalanceModel::new, SqlDialect.MYSQL);
     }

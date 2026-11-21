@@ -53,11 +53,9 @@ Notes:
 | `%ezeconomy_top_1%` | Top player balance (replace `1` with rank). |
 | `%ezeconomy_top_2%` | Second place player balance. |
 
-## Bank Placeholders
 
 | Placeholder | Description |
 | --- | --- |
-| `%ezeconomy_bank_<bank>%` | Balance for a specific bank. |
 
 ### Usage Examples
 

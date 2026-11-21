@@ -14,7 +14,7 @@ public final class SharedConnectionRegression {
     private static MySQLStorageProvider provider(Connection c)throws Exception{
         var f=sun.misc.Unsafe.class.getDeclaredField("theUnsafe");f.setAccessible(true);var p=(MySQLStorageProvider)((sun.misc.Unsafe)f.get(null)).allocateInstance(MySQLStorageProvider.class);
         field(p,"connection",c);field(p,"table","balances");field(p,"lock",new Object());
-        com.skyblockexp.ezeconomy.storage.jaloquent.EzTableRegistry.registerAll("balances","players","banks","bank_members","transactions");
+        com.skyblockexp.ezeconomy.storage.jaloquent.EzTableRegistry.registerAll("balances", "players", "transactions");
         var jdbc=new com.skyblockexp.ezeconomy.storage.jaloquent.EzJdbcStore(c);
         field(p,"balanceRepo",new com.github.ezframework.jaloquent.model.ModelRepository<BalanceModel>(jdbc,BalanceModel.PREFIX,BalanceModel::new,com.github.ezframework.javaquerybuilder.query.sql.SqlDialect.MYSQL));return p;
     }

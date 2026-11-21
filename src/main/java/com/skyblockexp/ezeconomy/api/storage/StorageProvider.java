@@ -19,7 +19,7 @@ public interface StorageProvider {
      * @throws StorageInitException
      */
     void init() throws StorageInitException;
-    
+
     /**
      * Build database connection and load any necessary data.
      * @throws StorageLoadException
@@ -31,7 +31,7 @@ public interface StorageProvider {
      * @throws StorageSaveException
      */
     void save() throws StorageSaveException;
-    
+
     /**
      * Gets the balance for a player and currency.
      * @param uuid Player UUID
@@ -359,176 +359,4 @@ public interface StorageProvider {
      */
     EconomyPlayer getPlayer(UUID uuid);
 
-    /**
-     * Creates a new bank with the given name and owner.
-     * @param name Bank name
-     * @param owner Owner UUID
-     * @return true if created, false if already exists
-     */
-    boolean createBank(String name, UUID owner);
-
-    /**
-     * Deletes a bank by name.
-     * @param name Bank name
-     * @return true if deleted, false if not found
-     */
-    boolean deleteBank(String name);
-
-    /**
-     * Checks if a bank exists by name.
-     * @param name Bank name
-     * @return true if exists, false otherwise
-     */
-    boolean bankExists(String name);
-
-    /**
-     * Gets the balance for a bank and currency.
-     * @param name Bank name
-     * @param currency Currency identifier
-     * @return Bank's balance for the given currency
-     */
-    double getBankBalance(String name, String currency);
-
-    /**
-     * Sets the balance for a bank and currency.
-     * @param name Bank name
-     * @param currency Currency identifier
-     * @param amount New balance
-     */
-    void setBankBalance(String name, String currency, double amount);
-
-    /**
-     * Attempts to withdraw from a bank for a currency.
-     * @param name Bank name
-     * @param currency Currency identifier
-     * @param amount Amount to withdraw
-     * @return true if successful, false if insufficient funds
-     */
-    boolean tryWithdrawBank(String name, String currency, double amount);
-
-    /**
-     * Deposits to a bank for a currency.
-     * @param name Bank name
-     * @param currency Currency identifier
-     * @param amount Amount to deposit
-     */
-    void depositBank(String name, String currency, double amount);
-
-    /**
-     * Deposits to a bank and returns the post-mutation bank balance in one call.
-     * Implementations should override this for atomic fast-paths.
-     */
-    default EconomyMutationResult depositBankAndGetBalance(String name, String currency, double amount) {
-        depositBank(name, currency, amount);
-        return EconomyMutationResult.success(getBankBalance(name, currency));
-    }
-
-    /**
-     * Withdraws from a bank and returns the post-mutation bank balance in one call.
-     * Implementations should override this for atomic fast-paths.
-     */
-    default EconomyMutationResult withdrawBankAndGetBalance(String name, String currency, double amount) {
-        boolean success = tryWithdrawBank(name, currency, amount);
-        double balance = getBankBalance(name, currency);
-        return success
-            ? EconomyMutationResult.success(balance)
-            : EconomyMutationResult.failure(balance, "Insufficient funds");
-    }
-
-    /**
-     * Gets all bank names.
-     * @return Set of bank names
-     */
-    Set<String> getBanks();
-
-    /**
-     * Checks if a UUID is the owner of a bank.
-     * @param name Bank name
-     * @param uuid Player UUID
-     * @return true if owner, false otherwise
-     */
-    boolean isBankOwner(String name, UUID uuid);
-
-    /**
-     * Checks if a UUID is a member of a bank.
-     * @param name Bank name
-     * @param uuid Player UUID
-     * @return true if member, false otherwise
-     */
-    boolean isBankMember(String name, UUID uuid);
-
-    /**
-     * Adds a member to a bank.
-     * @param name Bank name
-     * @param uuid Player UUID
-     * @return true if added, false if already a member
-     */
-    boolean addBankMember(String name, UUID uuid);
-
-    /**
-     * Removes a member from a bank.
-     * @param name Bank name
-     * @param uuid Player UUID
-     * @return true if removed, false if not a member
-     */
-    boolean removeBankMember(String name, UUID uuid);
-
-    /**
-     * Gets all member UUIDs of a bank.
-     * @param name Bank name
-     * @return Set of member UUIDs
-     */
-    Set<UUID> getBankMembers(String name);
-
-    /**
-     * <b>Legacy overload:</b> Gets the balance for a bank using the default currency ("dollar").
-     * <p>
-     * This is a convenience overload for backwards compatibility with single-currency plugins.
-     * Prefer {@link #getBankBalance(String, String)} for multi-currency support.
-     * </p>
-     * @deprecated Use {@link #getBankBalance(String, String)} for multi-currency support.
-     */
-    @Deprecated
-    default double getBankBalance(String name) {
-        return getBankBalance(name, "dollar");
-    }
-
-    /**
-     * <b>Legacy overload:</b> Sets the balance for a bank using the default currency ("dollar").
-     * <p>
-     * This is a convenience overload for backwards compatibility with single-currency plugins.
-     * Prefer {@link #setBankBalance(String, String, double)} for multi-currency support.
-     * </p>
-     * @deprecated Use {@link #setBankBalance(String, String, double)} for multi-currency support.
-     */
-    @Deprecated
-    default void setBankBalance(String name, double amount) {
-        setBankBalance(name, "dollar", amount);
-    }
-
-    /**
-     * <b>Legacy overload:</b> Attempts to withdraw from a bank using the default currency ("dollar").
-     * <p>
-     * This is a convenience overload for backwards compatibility with single-currency plugins.
-     * Prefer {@link #tryWithdrawBank(String, String, double)} for multi-currency support.
-     * </p>
-     * @deprecated Use {@link #tryWithdrawBank(String, String, double)} for multi-currency support.
-     */
-    @Deprecated
-    default boolean tryWithdrawBank(String name, double amount) {
-        return tryWithdrawBank(name, "dollar", amount);
-    }
-
-    /**
-     * <b>Legacy overload:</b> Deposits to a bank using the default currency ("dollar").
-     * <p>
-     * This is a convenience overload for backwards compatibility with single-currency plugins.
-     * Prefer {@link #depositBank(String, String, double)} for multi-currency support.
-     * </p>
-     * @deprecated Use {@link #depositBank(String, String, double)} for multi-currency support.
-     */
-    @Deprecated
-    default void depositBank(String name, double amount) {
-        depositBank(name, "dollar", amount);
-    }
 }

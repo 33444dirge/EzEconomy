@@ -18,7 +18,7 @@ public class ListenersComponent implements BootstrapComponent {
     @Override
     public void start() {
         stop();
-        register(new PlayerJoinListener(plugin, plugin.getDailyRewardManager()));
+        register(new PlayerJoinListener(plugin));
         // Keep PlayerLookup cache in sync with player activity
         register(new PlayerLookupListener());
         register(new GuiListener(plugin));

@@ -7,7 +7,6 @@ has_children: true
 
 # Developer API (v2)
 
-> EzEconomy is a Vault-compatible, standalone economy API with multi-currency and bank support. It is designed for plugin developers who need robust, extensible economic features.
 
 ---
 
@@ -66,22 +65,10 @@ api.transfer(fromUuid, toUuid, "dollar", 25.0);
 - Transfer funds: `api.transfer(fromUuid, toUuid, currency, amount)`
 - Custom debit/credit transfer: `api.transfer(fromUuid, toUuid, currency, debitAmount, creditAmount)`
 
-### Bank Support
-
-- Create a bank: `api.createBank(name, ownerUuid)`
-- Delete a bank: `api.deleteBank(name)`
-- Check if a bank exists: `api.bankExists(name)`
-- Get/set bank balance: `api.getBankBalance(name, currency)`, `api.setBankBalance(name, currency, amount)`
-- Withdraw/deposit: `api.tryWithdrawBank(name, currency, amount)`, `api.depositBank(name, currency, amount)`
-- List all banks: `api.getBanks()`
-- Manage bank members: `api.addBankMember(name, uuid)`, `api.removeBankMember(name, uuid)`, `api.getBankMembers(name)`
-- Check ownership/membership: `api.isBankOwner(name, uuid)`, `api.isBankMember(name, uuid)`
-
 ---
 
 ## Custom Storage Providers
 
-You can supply your own storage backend by implementing the `StorageProvider` interface. This allows you to use custom databases or data sources for all economy, bank, and currency operations.
 
 See [api/storage-provider.md](api/storage-provider.md) for a full implementation guide, best practices, and example code.
 
@@ -89,7 +76,6 @@ See [api/storage-provider.md](api/storage-provider.md) for a full implementation
 
 ## PlaceholderAPI
 
-If PlaceholderAPI is installed, EzEconomy automatically registers placeholders for player balances, bank balances, and more. See the Placeholders documentation for available keys.
 
 ---
 
@@ -110,7 +96,6 @@ The `/ezeconomy` admin command provides advanced server management utilities. It
 **Subcommands:**
 
 - `cleanup`: Remove orphaned player data from all storage types
-- `daily reset`: Reset all daily rewards for all players
 - `reload`: Reload the plugin configuration
 - `reload messages`: Reload only the message file
 - `database info`: Show current database connection info
@@ -138,5 +123,3 @@ See [commands.md](../commands.md) for usage details.
   - [PostTransactionEvent](event/PostTransactionEvent.md)
   - [PlayerPayPlayerEvent](event/PlayerPayPlayerEvent.md)
   - [TransactionType (enum)](event/TransactionType.md)
-  - [BankPreTransactionEvent](event/BankPreTransactionEvent.md)
-  - [BankPostTransactionEvent](event/BankPostTransactionEvent.md)

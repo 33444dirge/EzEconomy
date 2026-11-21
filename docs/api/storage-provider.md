@@ -6,11 +6,9 @@ parent: Developer Reference
 
 # Custom Storage Providers for EzEconomy
 
-EzEconomy supports pluggable storage backends for all economy, bank, and currency operations. You can implement your own provider to use a custom database, cloud service, or any data source.
 
 ## Overview
 
-A storage provider is any class that implements the `StorageProvider` interface from the EzEconomy API. This interface defines all required methods for player balances, banks, currencies, and (optionally) transactions.
 
 - **Location:** `com.skyblockexp.ezeconomy.api.storage.StorageProvider`
 - **Purpose:** Abstracts all persistent data operations for the plugin
@@ -47,7 +45,6 @@ A storage provider is any class that implements the `StorageProvider` interface 
 
    Your provider must implement all methods for:
    - Player balances (get, set, deposit, withdraw)
-   - Bank operations (create, delete, balance, members)
    - Currency management
    - (Optional) Transaction history
 
@@ -125,35 +122,6 @@ This section documents all methods of the `StorageProvider` interface. Implement
 - `TransferResult transfer(UUID fromUuid, UUID toUuid, String currency, double debitAmount, double creditAmount)`  
   Transfer custom debit/credit amounts between players.
 
-## Bank Operations
-
-- `boolean createBank(String name, UUID owner)`  
-  Create a new bank.
-- `boolean deleteBank(String name)`  
-  Delete a bank.
-- `boolean bankExists(String name)`  
-  Check if a bank exists.
-- `double getBankBalance(String name, String currency)`  
-  Get a bank's balance for a currency.
-- `void setBankBalance(String name, String currency, double amount)`  
-  Set a bank's balance for a currency.
-- `boolean tryWithdrawBank(String name, String currency, double amount)`  
-  Attempt to withdraw from a bank.
-- `void depositBank(String name, String currency, double amount)`  
-  Deposit to a bank.
-- `Set<String> getBanks()`  
-  Get all bank names.
-- `boolean isBankOwner(String name, UUID uuid)`  
-  Check if a UUID is the owner of a bank.
-- `boolean isBankMember(String name, UUID uuid)`  
-  Check if a UUID is a member of a bank.
-- `boolean addBankMember(String name, UUID uuid)`  
-  Add a member to a bank.
-- `boolean removeBankMember(String name, UUID uuid)`  
-  Remove a member from a bank.
-- `Set<UUID> getBankMembers(String name)`  
-  Get all member UUIDs of a bank.
-
 ## Cross-Server Support (v3.1.0+)
 
 These default methods support cross-server payment notifications. Override them if your backend stores player data or pending messages. As of v3.1.1, `resolvePlayerByName()` and `persistPlayerInfo()` are fully implemented in the MySQL storage provider and are used by `PayCommand` and `PaymentExecutor` for cross-server player resolution.
@@ -183,10 +151,6 @@ All legacy methods use the default currency "dollar". Implement for compatibilit
 - `boolean tryWithdraw(UUID uuid, double amount)`
 - `void deposit(UUID uuid, double amount)`
 - `Map<UUID, Double> getAllBalances()`
-- `double getBankBalance(String name)`
-- `void setBankBalance(String name, double amount)`
-- `boolean tryWithdrawBank(String name, double amount)`
-- `void depositBank(String name, double amount)`
 
 ## Thread Safety & Atomicity
 

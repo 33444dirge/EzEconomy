@@ -67,17 +67,7 @@ A player appearing at the top unexpectedly may indicate duplication, an exploit,
 
 ---
 
-## Bank Moderation
-
-Server admins with `ezeconomy.bank.admin` can inspect and modify any bank:
-
 ```text
-/bank info <name> [currency]              # View members, owner, and balance
-/bank balance <name> [currency]           # Quick balance check
-/bank deposit <name> <amount> [currency]  # Add funds to a bank (or `/bank deposit <amount>` to deposit to your own bank)
-/bank withdraw <name> <amount> [currency] # Remove funds from a bank
-/bank delete <name>                        # Delete an empty or abandoned bank
-/bank removemember <name> <player>         # Remove a player from a bank
 ```
 
 ---
@@ -101,7 +91,6 @@ These require `ezeconomy.admin`:
 | `/ezeconomy reload` | Reloads `config.yml` and message files without a server restart. |
 | `/ezeconomy reload messages` | Reloads only the message/language file. |
 | `/ezeconomy cleanup` | Removes orphaned player data (accounts with no balance in any currency). Run periodically on large servers. |
-| `/ezeconomy daily reset` | Resets all daily reward counters for all players. |
 | `/ezeconomy database info` | Shows the active storage backend and connection details. |
 | `/ezeconomy database test` | Tests the live database connection — useful after config changes. |
 | `/ezeconomy database reset` | **Dangerous.** Drops and recreates all tables. Only use on a fresh install or with a verified backup. |

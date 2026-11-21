@@ -11,33 +11,12 @@ language: en
 # Keep `false` in production to avoid log spam.
 debug: false
 
-# Daily login reward (optional)
-daily-reward:
-  enabled: false
-  amount: 100
-  currency: default
-  cooldown-hours: 24
-  permission: ezeconomy.daily
-  message: "&aYou received &e%amount% %currency% &afor your daily login!"
-  sound: ENTITY_EXPERIENCE_ORB_PICKUP
-
-# When enabled, the storage provider will be asked to create/store a record
-# for each player when they join the server. This helps ensure player data
-# files/rows exist for admin reporting tools. Default: false
+# Optionally create a wallet record when a player joins.
 store-on-join:
   enabled: false
 
-# Banking feature toggle: set to `false` to disable built-in bank subsystem
-# (commands, GUIs, Vault bank methods, and bank PAPI placeholders).
-banking:
-  enabled: true
-  # When true, a personal bank is automatically created for each player on first join.
-  # The bank name matches the player's name. Players can still create additional banks manually.
-  auto-create-on-join: true
 
-bank-interest-interval-ticks: 72000 # How often (in ticks) to pay bank interest (default: 1 hour)
-
-# Multi-currency support (optional)
+# Independent wallet currencies; transfers keep the selected currency.
 multi-currency:
   enabled: false
   default: "dollar"
@@ -54,22 +33,6 @@ multi-currency:
       display: "Gem"
       symbol: "♦"
       decimals: 0
-  conversion:
-    dollar:
-      euro: 0.95
-      gem: 0.01
-    euro:
-      dollar: 1.05
-      gem: 0.012
-    gem:
-      dollar: 100
-      euro: 80
-
-# Locking strategy used for balance updates. Options: NONE, LOCAL, REDIS, BUNGEECORD
-# NONE: disable locking (recommended for single-server setups for maximum performance).
-# LOCAL: plugin uses in-process locks only.
-# REDIS: uses a distributed Redis lock (requires ezeconomy-redis extension and redis.yml).
-# BUNGEECORD: use a proxy-backed lock transport via plugin messaging (requires bungeecord proxy component and bungeecord.yml).
 locking-strategy: NONE
 
 # Locking timing configuration (applies to all strategies)

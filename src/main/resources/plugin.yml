@@ -20,9 +20,6 @@ commands:
   baltop:
     description: Show top player balances
     usage: /baltop [amount]
-  bank:
-    description: Bank management commands
-    usage: /bank <create|delete|balance|deposit|withdraw|addmember|removemember|info> ...
   pay:
     description: Pay money to another player or all players
     usage: /pay <player|*> <amount> [currency]
@@ -35,7 +32,7 @@ commands:
     usage: /currency [currency]
   ezeconomy:
     description: EzEconomy admin utilities
-    usage: /ezeconomy <cleanup|daily reset|reload|reload messages|database|spool>
+    usage: /ezeconomy <cleanup|reload|reload messages|database|spool>
 
 permissions:
   ezeconomy.payall:
@@ -89,29 +86,4 @@ permissions:
     default: op
   ezeconomy.user.eco.gui:
     description: Allows opening the /eco GUI or using /eco to open the user GUI
-    default: true
-  # Bank-related user permissions
-  ezeconomy.user.bank.create:
-    description: Create a bank account
-    default: true
-  ezeconomy.user.bank.delete:
-    description: Delete a bank account
-    default: op
-  ezeconomy.user.bank.balance:
-    description: View a bank's balance
-    default: true
-  ezeconomy.user.bank.deposit:
-    description: Deposit into a bank
-    default: true
-  ezeconomy.user.bank.withdraw:
-    description: Withdraw from a bank
-    default: true
-  ezeconomy.user.bank.addmember:
-    description: Add a member to a bank
-    default: op
-  ezeconomy.user.bank.removemember:
-    description: Remove a member from a bank
-    default: op
-  ezeconomy.user.bank.info:
-    description: View a bank's member list and details
     default: true

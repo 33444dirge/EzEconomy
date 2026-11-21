@@ -27,28 +27,7 @@ multi-currency:
       display: "Gem"
       symbol: "♦"
       decimals: 0
-  conversion:
-    dollar:
-      euro: 0.95
-      gem: 0.01
-    euro:
-      dollar: 1.05
-      gem: 0.012
-    gem:
-      dollar: 100
-      euro: 80
 ```
-
-### Banking toggle
-
-Enable or disable the built-in bank subsystem (commands, GUIs, Vault bank methods, and bank placeholders).
-
-```yaml
-banking:
-  enabled: true
-```
-
-Set `banking.enabled` to `false` if you prefer using a different bank plugin or want to disable shared bank accounts.
 
 ### Caching strategy
 
@@ -102,7 +81,6 @@ When `true`:
 
 - Jaloquent SQL operations are logged to the server console.
 - Cross-server messaging events (relay, delivery, pending notifications) are printed.
-- Daily-reward diagnostics (invalid sounds, timing) are logged.
 
 Leave `false` in production to keep your console clean.
 
@@ -110,7 +88,6 @@ Leave `false` in production to keep your console clean.
 
 - `storage` must match one of the supported providers: `yml`, `mysql`, `sqlite`, `mongodb`, or `custom`.
 - When `multi-currency.enabled` is `false`, EzEconomy uses only the `default` currency.
-- Conversion rates are directional. Define both directions if you need round trips.
 
 ## YML Storage
 
@@ -172,7 +149,6 @@ Notes:
 sqlite:
   file: ezeconomy.db
   table: balances
-  banksTable: banks
 ```
 
 **Recommended for**: single-server environments that want a lightweight database.
@@ -186,7 +162,6 @@ mongodb:
   uri: mongodb://localhost:27017
   database: ezeconomy
   collection: balances
-  banksCollection: banks
 ```
 
 **Recommended for**: teams already using MongoDB in their infrastructure.

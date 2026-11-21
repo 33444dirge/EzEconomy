@@ -4,10 +4,8 @@ import com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger;
 
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
 import com.skyblockexp.ezeconomy.compat.registry.RegistryCompat;
-import com.skyblockexp.ezeconomy.manager.BankInterestManager;
 import com.skyblockexp.ezeconomy.manager.CurrencyManager;
 import com.skyblockexp.ezeconomy.manager.CurrencyPreferenceManager;
-import com.skyblockexp.ezeconomy.manager.DailyRewardManager;
 import com.skyblockexp.ezeconomy.update.SpigotUpdateChecker;
 import java.io.File;
 import org.bukkit.Bukkit;
@@ -24,8 +22,6 @@ public class EzEconomyPlugin extends JavaPlugin {
     private CurrencyPreferenceManager currencyPreferenceManager;
     private CurrencyManager currencyManager;
     private EzEconomyMetrics metrics;
-    private BankInterestManager bankInterestManager;
-    private DailyRewardManager dailyRewardManager;
     private MessageProvider messageProvider;
     private VaultEconomyImpl vaultEconomy;
     private FileConfiguration messagesConfig;
@@ -39,8 +35,6 @@ public class EzEconomyPlugin extends JavaPlugin {
     private com.skyblockexp.ezeconomy.service.metrics.TransactionMetricsService transactionMetricsService;
     private com.skyblockexp.ezeconomy.service.format.CurrencyFormatter currencyFormatter;
     private com.skyblockexp.ezeconomy.service.storage.StorageConfigLoader storageConfigLoader;
-
-
 
     public void setIoExecutor(com.skyblockexp.ezeconomy.service.EconomyIoExecutor executor) { ioExecutor = executor; }
     public boolean submitIo(Runnable task) {
@@ -121,10 +115,6 @@ public class EzEconomyPlugin extends JavaPlugin {
         return vaultEconomy;
     }
 
-    public BankInterestManager getBankInterestManager() {
-        return bankInterestManager;
-    }
-
     /**
      * Returns the default currency as defined in config or "dollar" if not set.
      */
@@ -182,8 +172,6 @@ public class EzEconomyPlugin extends JavaPlugin {
         this.messageProvider = provider;
     }
 
-
-
     public void setStorage(StorageProvider provider) {
         this.storage = provider;
         this.storageWarningLogged = false;
@@ -197,24 +185,12 @@ public class EzEconomyPlugin extends JavaPlugin {
         this.currencyManager = m;
     }
 
-    public void setBankInterestManager(BankInterestManager m) {
-        this.bankInterestManager = m;
-    }
-
-    public void setDailyRewardManager(DailyRewardManager m) {
-        this.dailyRewardManager = m;
-    }
-
     public void setPayFlowManager(com.skyblockexp.ezeconomy.gui.PayFlowManager m) {
         this.payFlowManager = m;
     }
 
     public com.skyblockexp.ezeconomy.gui.PayFlowManager getPayFlowManager() {
         return this.payFlowManager;
-    }
-
-    public DailyRewardManager getDailyRewardManager() {
-        return this.dailyRewardManager;
     }
 
     public void setMetrics(EzEconomyMetrics metrics) {

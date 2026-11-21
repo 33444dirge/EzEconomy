@@ -9,7 +9,6 @@ import com.skyblockexp.ezeconomy.core.Money;
 
 import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 import com.skyblockexp.ezeconomy.api.storage.StorageProvider;
-import com.skyblockexp.ezeconomy.util.CurrencyUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -180,17 +179,7 @@ public class PayCommand implements CommandExecutor {
 
             record Credit(UUID uuid, String currency, double amount) {}
             List<Credit> credits = new ArrayList<>();
-            for (UUID recipient : recipients) {
-                String preferred = plugin.getCurrencyPreferenceManager().getPreferredCurrency(recipient);
-                if (preferred == null) preferred = currency;
-                double value = preferred.equalsIgnoreCase(currency) ? amountDecimal.doubleValue()
-                        : CurrencyUtil.convert(plugin, amountDecimal.doubleValue(), currency, preferred);
-                if (!Double.isFinite(value) || value <= 0) {
-                    MessageUtils.send(sender, plugin, "unknown_currency", Map.of("currency", preferred));
-                    return true;
-                }
-                credits.add(new Credit(recipient, preferred, value));
-            }
+            for (UUID recipient : recipients) credits.add(new Credit(recipient, currency, amountDecimal.doubleValue()));
             java.math.BigDecimal totalCost = amountDecimal.multiply(java.math.BigDecimal.valueOf(recipients.size()));
             // Withdraw total cost first (unless bypass permission)
             if (!bypassWithdraw) {
@@ -206,7 +195,7 @@ public class PayCommand implements CommandExecutor {
                 }
             }
 
-            // Deposit to each recipient, honoring their currency preference when possible
+            // Credit every recipient in the currency selected by the payer.
             int credited = 0;
             for (Credit credit : credits) {
                 UUID recip = credit.uuid();

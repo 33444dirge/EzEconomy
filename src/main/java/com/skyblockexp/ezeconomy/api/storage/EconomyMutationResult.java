@@ -1,7 +1,7 @@
 package com.skyblockexp.ezeconomy.api.storage;
 
 /**
- * Result object for balance and bank balance mutations.
+ * Result object for player balance mutations.
  */
 public final class EconomyMutationResult {
     private final boolean success;

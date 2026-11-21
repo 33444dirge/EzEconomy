@@ -1,5 +1,7 @@
 # EzEconomy
 
+`jiujiu` 分支已移除银行、每日登录奖励和货币兑换，见 [功能删减说明](docs/2026-11-21-feature-removal.md)。
+
 `jiujiu` 分支的本地源码迁移、构建和消费账本接入说明见 [docs/jiujiu.md](docs/jiujiu.md)。
 
 2026-11-21 的优化、资源释放、Folia 修复和验证结果见 [检查报告](docs/2026-11-21-audit.md)。
@@ -47,7 +49,6 @@ Keep only one EzEconomy Bukkit jar in your `plugins/` folder.
 - [Placeholders](docs/integration/placeholderapi.md): PlaceholderAPI integration
 - [Storage](docs/storage/storage.md): Storage backends and setup
 - [Features - Multi-currency](docs/feature/multi-currency.md): Configure multiple currencies
-- [Features - Banking](docs/feature/banking.md): In-plugin bank accounts and permissions
 - [Features - Money formatting](docs/feature/money-formatting.md): Presentation options, locales, compact formats, and placeholders
 - [Cross-server messaging](docs/feature/cross-server.md): Velocity, BungeeCord, and Redis cross-server transports
 - [Caching strategy](docs/feature/caching-strategy.md): `LOCAL`, `REDIS`, `BUNGEECORD`, `DATABASE` options
@@ -60,6 +61,8 @@ Keep only one EzEconomy Bukkit jar in your `plugins/` folder.
 
 ---
 
+This branch provides wallet balances, same-currency payments, rankings, and optional independent currencies. Banks, daily login rewards, and currency exchange have been removed; old feature settings are ignored.
+
 ##  Key Features
 
 EzEconomy is designed for performance, reliability, and operational clarity. Highlights include:
@@ -71,8 +74,7 @@ EzEconomy is designed for performance, reliability, and operational clarity. Hig
 - **Cross-server messaging**: Payment notifications and player lists via Velocity, BungeeCord, or Redis pub/sub
 - **Distributed locking**: LOCAL, REDIS, or BUNGEECORD lock strategies for multi-server safety
 - **Async caching**: Optimised for large servers
-- **Comprehensive commands**: `/balance`, `/eco`, `/baltop`, `/bank`, `/pay`, `/currency`
-- **Granular permissions**: Per-command and per-bank action
+- **Granular permissions**: Per-command permissions
 
 ---
 
@@ -85,7 +87,6 @@ EzEconomy is designed for performance, reliability, and operational clarity. Hig
 - **/eco take <player> <amount> [currency]**: Remove funds from a player. Optional currency (multi-currency). Permission: `ezeconomy.eco.take` (or the umbrella `ezeconomy.eco`).
 - **/eco set <player> <amount> [currency]**: Set a player's balance. Optional currency (multi-currency). Permission: `ezeconomy.eco.set` (or the umbrella `ezeconomy.eco`).
 - **/baltop [amount]**: Show top balances
-- **/bank <create|delete|balance|deposit|withdraw|addmember|removemember|info> ...**: Bank management (`ezeconomy.bank`)
 - **/pay <player> <amount>**: Send funds to another player (`ezeconomy.pay`)
 - **/pay * <amount>**: Send funds to all online players (requires `ezeconomy.payall`; configurable via `pay.pay_all` in `config.yml`). See [Commands](docs/commands.md) for details.
 - **/currency [currency]**: Set or view your preferred currency
@@ -105,26 +106,14 @@ EzEconomy is designed for performance, reliability, and operational clarity. Hig
  - `ezeconomy.eco.gui`: Permission to open the `/eco` GUI (default: allowed for everyone)
  - `ezeconomy.pay`: Use /pay command
  - `ezeconomy.currency`: Use /currency command
-- **Bank Permissions**:
-  - `ezeconomy.bank.create`: Create a new bank
-  - `ezeconomy.bank.delete`: Delete a bank
-  - `ezeconomy.bank.balance`: View bank balance
-  - `ezeconomy.bank.deposit`: Deposit to a bank
-  - `ezeconomy.bank.withdraw`: Withdraw from a bank
-  - `ezeconomy.bank.addmember`: Add a member to a bank
-  - `ezeconomy.bank.removemember`: Remove a member from a bank
-  - `ezeconomy.bank.info`: View bank info
-  - `ezeconomy.bank.admin`: All bank admin actions
 
 ---
 
 ##  Security Notes for Server Owners
 
-- **Limit admin permissions**: Only grant `ezeconomy.eco` and `ezeconomy.bank.admin` to trusted staff.
 - **Use a permissions plugin**: Manage access with groups/roles so players cannot self-assign economy powers.
 - **Lock down database access**: Use a dedicated database user with minimal privileges and keep credentials private.
 - **Back up economy data**: Schedule regular backups of your storage files or database to recover from mistakes or exploits.
-- **Review bank permissions**: Consider limiting bank creation/withdraw permissions to prevent abuse on public servers.
 
 ---
 
@@ -157,16 +146,6 @@ multi-currency:
       display: "Gem"
       symbol: ""
       decimals: 0
-  conversion:
-    dollar:
-      euro: 0.95
-      gem: 0.01
-    euro:
-      dollar: 1.05
-      gem: 0.012
-    gem:
-      dollar: 100
-      euro: 80
 ```
 
 ### `config-yml.yml` (YML storage settings):
@@ -193,7 +172,6 @@ mysql:
 sqlite:
   file: ezeconomy.db
   table: balances
-  banksTable: banks
 ```
 
 ### `config-mongodb.yml` (MongoDB storage settings):
@@ -202,7 +180,6 @@ mongodb:
   uri: mongodb://localhost:27017
   database: ezeconomy
   collection: balances
-  banksCollection: banks
 ```
 
 ---
@@ -226,7 +203,6 @@ mongodb:
   - Use placeholders in chat, scoreboard, and other plugins:
     - `%ezeconomy_balance%`  Your balance
     - `%ezeconomy_balance_<currency>%`  Your balance in a specific currency (e.g., `%ezeconomy_balance_euro%`)
-    - `%ezeconomy_bank_<bank>%`  Balance of a specific bank
     - `%ezeconomy_top_1%`  Top 1 player balance (replace 1 with rank)
     - `%ezeconomy_currency%`  Your preferred currency
   - Works with all PlaceholderAPI-compatible plugins
@@ -247,5 +223,5 @@ EzEconomy supports custom storage backends (YML, MySQL, SQLite, MongoDB, or your
 3. Only one provider can be registered. If set, EzEconomy will use it instead of YML/MySQL.
 4. See the JavaDoc in `StorageProvider.java` for required methods.
 
-This allows you to use SQLite, MongoDB, Redis, or any other system for player balances and banks.
+This allows you to use SQLite, MongoDB, Redis, or any other system for player balances.
 
