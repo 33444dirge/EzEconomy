@@ -113,10 +113,8 @@ public class IntegrationEzEconomyPAPIExpansionTest {
         String symbol = expansion.onPlaceholderRequest(null, "symbol_dollar");
         assertNotNull(symbol);
 
-        Field cacheField = com.skyblockexp.ezeconomy.papi.EzEconomyPAPIExpansion.class.getDeclaredField("topCache");
-        cacheField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        com.skyblockexp.ezeconomy.cache.CacheProvider<String, String> topCache = (com.skyblockexp.ezeconomy.cache.CacheProvider<String, String>) cacheField.get(expansion);
+        com.skyblockexp.ezeconomy.cache.CacheProvider<String, String> topCache =
+                com.skyblockexp.ezeconomy.cache.CacheManager.getProvider();
         assertNotNull(topCache);
         topCache.put("top:dollar:1", "player - 123.45 dollar", 10000L);
 

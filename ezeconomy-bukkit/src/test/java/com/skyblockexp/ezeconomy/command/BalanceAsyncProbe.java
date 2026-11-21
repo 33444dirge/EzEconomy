@@ -35,7 +35,7 @@ public final class BalanceAsyncProbe {
         when(scheduler.runDelayed(eq(plugin),any(),any(),eq(1L))).thenAnswer(c->{callbacks.add(c.getArgument(1));return nativeTask;});
         var messages=new ArrayList<String>();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);AtomicReference<Thread> readThread=new AtomicReference<>();
         when(storage.getBalance(id,"j")).thenAnswer(c->{readThread.set(Thread.currentThread());entered.countDown();if(!release.await(5,TimeUnit.SECONDS))throw new IllegalStateException("test timeout");return 42.5;});
-        try(var platform=mockStatic(PlatformScheduler.class);var output=mockStatic(MessageUtils.class)){
+        try(var platform=mockStatic(PlatformScheduler.class, CALLS_REAL_METHODS);var output=mockStatic(MessageUtils.class)){
             platform.when(PlatformScheduler::isFolia).thenReturn(true);
             output.when(()->MessageUtils.send(any(CommandSender.class),eq(plugin),anyString(),anyMap())).thenAnswer(c->{messages.add(c.getArgument(2));return null;});
             output.when(()->MessageUtils.send(any(CommandSender.class),eq(plugin),anyString())).thenAnswer(c->{messages.add(c.getArgument(2));return null;});

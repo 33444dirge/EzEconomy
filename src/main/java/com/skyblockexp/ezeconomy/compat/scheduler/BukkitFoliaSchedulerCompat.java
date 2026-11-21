@@ -12,11 +12,25 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class BukkitFoliaSchedulerCompat implements SchedulerCompat {
     private final boolean folia = detectFolia();
+    private final java.lang.reflect.Method tickThreadCheck = tickThreadCheck();
     private final SchedulerAdapter adapter = folia ? new FoliaSchedulerAdapter() : new BukkitSchedulerAdapter();
 
     @Override
     public boolean isFolia() {
         return folia;
+    }
+
+    private java.lang.reflect.Method tickThreadCheck() {
+        if (!folia) return null;
+        try { return Class.forName("io.papermc.paper.util.TickThread").getMethod("isTickThread"); }
+        catch (ReflectiveOperationException unavailable) { return null; }
+    }
+
+    @Override public boolean isTickThread() {
+        if (!folia) return org.bukkit.Bukkit.isPrimaryThread();
+        if (org.bukkit.Bukkit.isGlobalTickThread()) return true;
+        try { return tickThreadCheck != null && Boolean.TRUE.equals(tickThreadCheck.invoke(null)); }
+        catch (ReflectiveOperationException unavailable) { return false; }
     }
 
     @Override
@@ -41,7 +55,7 @@ public final class BukkitFoliaSchedulerCompat implements SchedulerCompat {
 
     @Override
     public <T> T callSync(JavaPlugin plugin, Callable<T> callable) throws ExecutionException, InterruptedException {
-        if (plugin.getServer().isPrimaryThread()) {
+        if (plugin.getServer().isPrimaryThread() || (folia && isTickThread())) {
             try {
                 return callable.call();
             } catch (Exception e) {

@@ -27,12 +27,13 @@ public class CurrencyPreferenceManager {
         return preferences.getOrDefault(uuid, getDefaultCurrency());
     }
 
-    public void setPreferredCurrency(UUID uuid, String currency) {
+    public synchronized void setPreferredCurrency(UUID uuid, String currency) {
         preferences.put(uuid, currency);
         persist(uuid, currency);
     }
 
-    public void load() {
+    public synchronized void load() {
+        preferences.clear();
         config = YamlConfiguration.loadConfiguration(dataFile);
         ConfigurationSection section = config.getConfigurationSection(PREFERENCES_PATH);
         if (section == null) {
@@ -43,7 +44,7 @@ public class CurrencyPreferenceManager {
                 UUID uuid = UUID.fromString(key);
                 String currency = section.getString(key);
                 if (currency != null && !currency.isBlank()) {
-                    preferences.put(uuid, currency.toLowerCase());
+                    preferences.put(uuid, currency.toLowerCase(java.util.Locale.ROOT));
                 }
             } catch (IllegalArgumentException ignored) {
                 plugin.getLogger().warning("Invalid UUID in currency preferences: " + key);
@@ -51,7 +52,7 @@ public class CurrencyPreferenceManager {
         }
     }
 
-    public void save() {
+    public synchronized void save() {
         if (config == null) {
             config = new YamlConfiguration();
         }

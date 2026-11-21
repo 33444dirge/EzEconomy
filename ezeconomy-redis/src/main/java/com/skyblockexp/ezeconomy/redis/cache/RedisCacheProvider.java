@@ -44,7 +44,8 @@ public class RedisCacheProvider<K, V> implements CacheProvider<K, V>, AutoClosea
         } catch (Throwable ignored) {}
         RedisURI uri = RedisURI.builder().withHost(host).withPort(port).withDatabase(database).build();
         this.client = RedisClient.create(uri);
-        this.connection = client.connect();
+        try { this.connection = client.connect(); }
+        catch (RuntimeException failure) { client.shutdown(); throw failure; }
         this.commands = connection.sync();
         this.fallbackToLocal = fallback;
     }
@@ -55,7 +56,7 @@ public class RedisCacheProvider<K, V> implements CacheProvider<K, V>, AutoClosea
     public ExpiringCache.Entry<V> getEntry(K key) {
         String k = keyToStr(key);
         boolean primaryThread = false;
-        try { primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread(); } catch (Throwable ignored) {}
+        try { primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread(); } catch (Throwable ignored) {}
         if (primaryThread && fallbackToLocal) return null;
         try {
             String v = commands.get(k);
@@ -71,7 +72,7 @@ public class RedisCacheProvider<K, V> implements CacheProvider<K, V>, AutoClosea
     public void put(K key, V value, long ttlMs) {
         String k = keyToStr(key);
         boolean primaryThread = false;
-        try { primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread(); } catch (Throwable ignored) {}
+        try { primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread(); } catch (Throwable ignored) {}
         if (primaryThread && fallbackToLocal) {
             // Fire-and-forget via async API to avoid blocking the main thread
             try {
@@ -89,7 +90,7 @@ public class RedisCacheProvider<K, V> implements CacheProvider<K, V>, AutoClosea
     public void remove(K key) {
         String k = keyToStr(key);
         boolean primaryThread = false;
-        try { primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread(); } catch (Throwable ignored) {}
+        try { primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread(); } catch (Throwable ignored) {}
         if (primaryThread && fallbackToLocal) {
             try { connection.async().del(k); } catch (Throwable ignored) {}
             return;
@@ -98,7 +99,7 @@ public class RedisCacheProvider<K, V> implements CacheProvider<K, V>, AutoClosea
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() {
         try { connection.close(); } catch (Exception ignored) {}
         try { client.shutdown(); } catch (Exception ignored) {}
     }

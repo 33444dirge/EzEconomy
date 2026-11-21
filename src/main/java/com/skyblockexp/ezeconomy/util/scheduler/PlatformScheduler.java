@@ -37,6 +37,33 @@ public final class PlatformScheduler {
     // Convenience static helpers
     // -------------------------------------------------------------------------
 
+    /** True on Bukkit's main thread and Folia's global or region tick threads. */
+    public static boolean isTickThread() { return COMPAT.isTickThread(); }
+
+    /** Entity-owned work must never run on Folia's global scheduler. */
+    public static ScheduledTask runForPlayer(JavaPlugin plugin, org.bukkit.entity.Player player,
+                                             Runnable task, Runnable retired, long delayTicks) {
+        return runForPlayer(plugin, player, task, retired, delayTicks, isFolia());
+    }
+
+    public static ScheduledTask runForPlayer(JavaPlugin plugin, org.bukkit.entity.Player player,
+                                             Runnable task, Runnable retired, long delayTicks, boolean folia) {
+        try {
+            long delay = Math.max(1L, delayTicks);
+            Runnable active = () -> { if (player.isOnline()) task.run(); else retired.run(); };
+            if (folia) {
+                var handle = player.getScheduler().runDelayed(plugin, ignored -> active.run(), retired, delay);
+                if (handle == null) { retired.run(); return null; }
+                return handle::cancel;
+            }
+            var handle = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, active, delay);
+            return handle::cancel;
+        } catch (RuntimeException failure) {
+            retired.run();
+            return null;
+        }
+    }
+
     public static ScheduledTask runTask(JavaPlugin plugin, Runnable task) {
         return COMPAT.runTask(plugin, task);
     }

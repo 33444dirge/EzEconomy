@@ -16,6 +16,9 @@ public class LocalCacheProvider<K, V> implements CacheProvider<K, V> {
         cache.put(key, value, ttlMs);
     }
 
+    @Override public void cleanUp() { cache.cleanUp(); }
+    @Override public void close() { cache.clear(); }
+
     @Override
     public void remove(K key) {
         cache.remove(key);

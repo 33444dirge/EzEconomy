@@ -42,7 +42,7 @@ public final class EventDispatcher {
      * @return the same event instance, after all handlers have processed it
      */
     public static <E extends Event> E fireSync(JavaPlugin plugin, E event) {
-        if (plugin.getServer().isPrimaryThread()) {
+        if (plugin.getServer().isPrimaryThread() || (PlatformScheduler.isFolia() && PlatformScheduler.isTickThread())) {
             plugin.getServer().getPluginManager().callEvent(event);
         } else {
             try {
@@ -53,8 +53,10 @@ public final class EventDispatcher {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logDispatchFailure(plugin.getLogger(), event, e);
+                if (event instanceof org.bukkit.event.Cancellable cancellable) cancellable.setCancelled(true);
             } catch (ExecutionException e) {
                 logDispatchFailure(plugin.getLogger(), event, e);
+                if (event instanceof org.bukkit.event.Cancellable cancellable) cancellable.setCancelled(true);
             }
         }
         return event;

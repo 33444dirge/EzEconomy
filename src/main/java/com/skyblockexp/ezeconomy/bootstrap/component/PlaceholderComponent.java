@@ -7,6 +7,7 @@ import com.skyblockexp.ezeconomy.placeholder.EzEconomyPlaceholderExpansion;
 
 public class PlaceholderComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
+    private EzEconomyPlaceholderExpansion expansion;
 
     public PlaceholderComponent(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -14,6 +15,7 @@ public class PlaceholderComponent implements BootstrapComponent {
 
     @Override
     public void start() {
+        stop();
         if (!PluginHookCompat.isPluginEnabled("PlaceholderAPI")) {
             return;
         }
@@ -22,13 +24,14 @@ public class PlaceholderComponent implements BootstrapComponent {
             plugin.getLogger().info("Detected external EzEconomy-PAPI expansion; skipping built-in placeholders.");
             return;
         }
-        new EzEconomyPlaceholderExpansion(plugin).register();
+        expansion = new EzEconomyPlaceholderExpansion(plugin);
+        expansion.register();
         plugin.getLogger().info("Registered EzEconomy placeholders with PlaceholderAPI.");
     }
 
     @Override
     public void stop() {
-        // PlaceholderAPI handles unregistration when plugin disables
+        if (expansion != null) { expansion.unregister(); expansion = null; }
     }
 
     @Override

@@ -30,6 +30,9 @@ public class MessagingService implements PluginMessageListener {
 	public void unregister() {
 		Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, CHANNEL);
 		Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, CHANNEL, this);
+		networkPlayers.clear();
+		networkPlayerUuids.clear();
+		localPendingNotifications.clear();
 	}
 
 	public Set<String> getNetworkPlayers() {
@@ -62,7 +65,10 @@ public class MessagingService implements PluginMessageListener {
 			out.writeUTF(senderName);
 			out.writeUTF(amount);
 			out.writeUTF(currency);
-			relay.sendPluginMessage(plugin, CHANNEL, bos.toByteArray());
+			byte[] payload = bos.toByteArray();
+			com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, relay,
+					() -> relay.sendPluginMessage(plugin, CHANNEL, payload),
+					() -> storePendingNotification(recipientUuid, recipientName, senderName, amount, currency), 1L);
 			logVerbose("Relayed cross-server notification for recipient=" + recipientName + " via " + relay.getName());
 		} catch (IOException e) {
 			plugin.getLogger().warning("Failed to send cross-server notification: " + e.getMessage());
@@ -104,7 +110,8 @@ public class MessagingService implements PluginMessageListener {
 			String msg = plugin.getMessageProvider().get("received",
 					Map.of("player", senderName, "amount", amount));
 			logVerbose("Delivering cross-server message to " + recipientName + ": " + msg);
-			recipient.sendMessage(msg);
+			com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, recipient,
+					() -> recipient.sendMessage(msg), () -> {}, 1L);
 		} else {
 			logVerbose("Cross-server NOTIFY: recipient " + recipientName + " not found locally");
 		}

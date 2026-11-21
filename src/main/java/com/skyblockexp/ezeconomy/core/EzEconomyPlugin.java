@@ -10,7 +10,6 @@ import com.skyblockexp.ezeconomy.manager.CurrencyPreferenceManager;
 import com.skyblockexp.ezeconomy.manager.DailyRewardManager;
 import com.skyblockexp.ezeconomy.update.SpigotUpdateChecker;
 import java.io.File;
-import java.util.List;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -19,22 +18,9 @@ import net.milkbowl.vault.economy.Economy;
 
 public class EzEconomyPlugin extends JavaPlugin {
     private static final int SPIGOT_RESOURCE_ID = 130975;
-    private static final long DEFAULT_INTEREST_INTERVAL_TICKS = 72_000L;
-        private static final List<String> DEFAULT_CONFIGS = List.of(
-            "config-yml.yml",
-            "config-mysql.yml",
-            "config-sqlite.yml",
-            "config-mongodb.yml",
-            "languages/en.yml",
-            "languages/nl.yml",
-            "languages/es.yml",
-            "languages/fr.yml",
-            "languages/zh.yml",
-            "user-gui.yml"
-        );
-
-    private StorageProvider storage;
+    private volatile StorageProvider storage;
     private boolean storageWarningLogged;
+    private volatile com.skyblockexp.ezeconomy.service.EconomyIoExecutor ioExecutor;
     private CurrencyPreferenceManager currencyPreferenceManager;
     private CurrencyManager currencyManager;
     private EzEconomyMetrics metrics;
@@ -54,7 +40,21 @@ public class EzEconomyPlugin extends JavaPlugin {
     private com.skyblockexp.ezeconomy.service.format.CurrencyFormatter currencyFormatter;
     private com.skyblockexp.ezeconomy.service.storage.StorageConfigLoader storageConfigLoader;
 
-    
+
+
+    public void setIoExecutor(com.skyblockexp.ezeconomy.service.EconomyIoExecutor executor) { ioExecutor = executor; }
+    public boolean submitIo(Runnable task) {
+        var executor = ioExecutor;
+        return executor != null && executor.submit(task);
+    }
+
+    public void reloadRuntime() {
+        try { bootstrap.reload(); }
+        catch (RuntimeException failure) {
+            getServer().getPluginManager().disablePlugin(this);
+            throw failure;
+        }
+    }
 
     public VaultEconomyImpl getEconomy() {
         return vaultEconomy;
@@ -98,13 +98,14 @@ public class EzEconomyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        IslandSpendLedger.close();
         if (this.bootstrap != null) {
             this.bootstrap.stop();
         } else {
             Bukkit.getServicesManager().unregister(Economy.class, vaultEconomy);
         }
         getLogger().info("EzEconomy disabled.");
+        IslandSpendLedger.close();
+        com.skyblockexp.ezeconomy.util.PlayerLookup.clearCache();
         INSTANCE = null;
     }
 
@@ -119,7 +120,7 @@ public class EzEconomyPlugin extends JavaPlugin {
     public VaultEconomyImpl getVaultEconomy() {
         return vaultEconomy;
     }
-    
+
     public BankInterestManager getBankInterestManager() {
         return bankInterestManager;
     }
@@ -181,10 +182,11 @@ public class EzEconomyPlugin extends JavaPlugin {
         this.messageProvider = provider;
     }
 
-    
+
 
     public void setStorage(StorageProvider provider) {
         this.storage = provider;
+        this.storageWarningLogged = false;
     }
 
     public void setCurrencyPreferenceManager(CurrencyPreferenceManager m) {

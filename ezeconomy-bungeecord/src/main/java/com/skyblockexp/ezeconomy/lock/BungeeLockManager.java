@@ -9,7 +9,7 @@ import java.util.UUID;
  * Transport-backed BungeeLockManager. Currently uses an in-process MockTransport by default.
  * Later this should be replaced by a plugin-messaging transport that communicates with the proxy.
  */
-public class BungeeLockManager implements LockManager {
+public class BungeeLockManager implements LockManager, AutoCloseable {
     private final LockTransport transport;
     private final long defaultTtlMs;
     private final long defaultRetryMs;
@@ -60,5 +60,10 @@ public class BungeeLockManager implements LockManager {
      */
     public static void setGlobalTransport(LockTransport transport) {
         globalTransport = transport;
+    }
+
+    @Override public void close() throws Exception {
+        if (globalTransport == transport) globalTransport = null;
+        if (transport instanceof AutoCloseable closeable) closeable.close();
     }
 }

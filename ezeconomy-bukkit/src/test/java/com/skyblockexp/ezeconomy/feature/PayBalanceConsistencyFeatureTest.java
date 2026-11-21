@@ -26,6 +26,7 @@ class PayBalanceConsistencyFeatureTest {
     void setup() throws Exception {
         server = MockBukkit.mock();
         plugin = MockBukkit.load(EzEconomyPlugin.class);
+        plugin.getConfig().set("debug", true);
         storage = new TestSupport.MockStorage();
         TestSupport.injectField(plugin, "storage", storage);
         plugin.loadMessageProvider();

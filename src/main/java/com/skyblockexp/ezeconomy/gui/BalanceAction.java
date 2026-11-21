@@ -20,35 +20,29 @@ public class BalanceAction extends GuiAction {
             return;
         }
         var config = plugin.getConfig();
-        Map<String, Double> currencies = new HashMap<>();
-        Map<String, Object> currencySection = config.getConfigurationSection("multi-currency.currencies") != null
-            ? config.getConfigurationSection("multi-currency.currencies").getValues(false)
-            : Collections.emptyMap();
-        if (config.getBoolean("multi-currency.enabled", false) && !currencySection.isEmpty()) {
-            for (String currency : currencySection.keySet()) {
-                double balance = storage.getBalance(player.getUniqueId(), currency);
-                currencies.put(currency, balance);
-            }
-        } else {
-            String currency = plugin.getDefaultCurrency();
-            double balance = storage.getBalance(player.getUniqueId(), currency);
-            currencies.put(currency, balance);
+        var uuid = player.getUniqueId();
+        var section = config.getConfigurationSection("multi-currency.currencies");
+        boolean multi = config.getBoolean("multi-currency.enabled", false) && section != null && !section.getKeys(false).isEmpty();
+        var selected = multi ? java.util.List.copyOf(section.getKeys(false)) : java.util.List.of(plugin.getDefaultCurrency());
+        if (!plugin.submitIo(() -> load(plugin, player, storage, uuid, selected, multi))) {
+            com.skyblockexp.ezeconomy.util.MessageUtils.sendRaw(player, plugin, "Balance queries are busy; please try again.");
         }
+    }
+
+    private void load(EzEconomyPlugin plugin, Player player, StorageProvider storage, java.util.UUID uuid,
+                      java.util.List<String> selected, boolean multi) {
+        Map<String, Double> currencies = new HashMap<>();
+        for (String currency : selected) currencies.put(currency, storage.getBalance(uuid, currency));
         Map<String, Double> banks = new HashMap<>();
         for (String bank : storage.getBanks()) {
-            if (storage.isBankMember(bank, player.getUniqueId())) {
-                if (config.getBoolean("multi-currency.enabled", false) && !currencySection.isEmpty()) {
-                    for (String currency : currencySection.keySet()) {
-                        double bankBalance = storage.getBankBalance(bank, currency);
-                        banks.put(bank + " (" + currency + ")", bankBalance);
-                    }
-                } else {
-                    String currency = plugin.getDefaultCurrency();
+            if (storage.isBankMember(bank, uuid)) {
+                for (String currency : selected) {
                     double bankBalance = storage.getBankBalance(bank, currency);
-                    banks.put(bank, bankBalance);
+                    banks.put(multi ? bank + " (" + currency + ")" : bank, bankBalance);
                 }
             }
         }
-        BalanceGui.open(plugin, player, currencies, banks);
+        com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, player,
+                () -> BalanceGui.open(plugin, player, currencies, banks), () -> {}, 1L);
     }
 }

@@ -29,6 +29,7 @@ public class BungeeCacheProvider<K, V> implements CacheProvider<K, V> {
 
     @Override
     public ExpiringCache.Entry<V> getEntry(K key) {
+        if (com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread()) return fallback.getEntry(key);
         if (transport == null) return fallback.getEntry(key);
         try {
             String v = transport.getCache(String.valueOf(key), 2000L);
@@ -41,13 +42,21 @@ public class BungeeCacheProvider<K, V> implements CacheProvider<K, V> {
 
     @Override
     public void put(K key, V value, long ttlMs) {
+        fallback.put(key, value, ttlMs);
         if (transport == null) { fallback.put(key, value, ttlMs); return; }
         try { transport.setCache(String.valueOf(key), String.valueOf(value), ttlMs); } catch (Throwable ignored) { fallback.put(key, value, ttlMs); }
     }
 
     @Override
     public void remove(K key) {
+        fallback.remove(key);
         if (transport == null) { fallback.remove(key); return; }
         try { transport.setCache(String.valueOf(key), "", 0); } catch (Throwable ignored) { fallback.remove(key); }
+    }
+
+    @Override public void cleanUp() { fallback.cleanUp(); }
+    @Override public void close() {
+        fallback.clear();
+        if (transport != null) transport.close();
     }
 }

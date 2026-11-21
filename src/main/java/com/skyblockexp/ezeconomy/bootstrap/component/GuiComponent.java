@@ -17,8 +17,11 @@ public class GuiComponent implements BootstrapComponent {
     public void start() {
         File file = new File(plugin.getDataFolder(), "user-gui.yml");
         if (!file.exists()) {
-            if (plugin.getResource("user-gui.yml") != null) {
+            try (java.io.InputStream resource = plugin.getResource("user-gui.yml")) {
+                if (resource == null) throw new IllegalStateException("Missing user-gui.yml resource");
                 plugin.saveResource("user-gui.yml", false);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Cannot load user-gui.yml", failure);
             }
         }
         FileConfiguration cfg = YamlConfiguration.loadConfiguration(file);

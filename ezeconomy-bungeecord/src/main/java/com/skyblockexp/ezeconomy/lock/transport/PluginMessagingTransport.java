@@ -21,13 +21,14 @@ import java.util.concurrent.TimeUnit;
  * This requires a player to be online to send messages to the proxy; the implementation will
  * pick an arbitrary online player when sending. Responses are expected on the same channel.
  */
-public class PluginMessagingTransport implements LockTransport, PluginMessageListener {
+public class PluginMessagingTransport implements LockTransport, PluginMessageListener, AutoCloseable {
     private final Plugin plugin;
     private final String channel;
     private final long responseTimeoutMs;
     private final Map<String, CompletableFuture<String>> pending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CacheResponse>> pendingCache = new ConcurrentHashMap<>();
     private final String sharedSecret;
+    private volatile boolean closed;
 
     public PluginMessagingTransport(Plugin plugin, String channel, long responseTimeoutMs) {
         this(plugin, channel, responseTimeoutMs, "");
@@ -48,6 +49,7 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
 
     @Override
     public String acquire(UUID uuid, long ttlMs) throws InterruptedException {
+        if (closed) return null;
         String requestId = Long.toHexString(System.nanoTime()) + java.util.UUID.randomUUID().toString();
         CompletableFuture<String> fut = new CompletableFuture<>();
         pending.put(requestId, fut);
@@ -61,6 +63,8 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
             }
             try {
                 return fut.get(responseTimeoutMs, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                throw interrupted;
             } catch (Exception ex) {
                 return null;
             }
@@ -105,7 +109,12 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
         Player player = null;
         if (!Bukkit.getOnlinePlayers().isEmpty()) player = Bukkit.getOnlinePlayers().iterator().next();
         if (player == null) throw new IllegalStateException("No online players available to send plugin message");
-        player.sendPluginMessage(plugin, channel, payload);
+        if (closed) throw new IllegalStateException("Transport is closed");
+        Player relay = player;
+        if (plugin instanceof org.bukkit.plugin.java.JavaPlugin javaPlugin) {
+            com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(javaPlugin, relay,
+                    () -> relay.sendPluginMessage(plugin, channel, payload), () -> {}, 1L);
+        } else relay.sendPluginMessage(plugin, channel, payload);
     }
 
     /** Cache response container */
@@ -119,6 +128,7 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
      * Request a cache value from the proxy and wait for a response.
      */
     public String getCache(String key, long timeoutMs) throws InterruptedException {
+        if (closed || com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread()) return null;
         String requestId = Long.toHexString(System.nanoTime()) + java.util.UUID.randomUUID().toString();
         CompletableFuture<CacheResponse> fut = new CompletableFuture<>();
         pendingCache.put(requestId, fut);
@@ -127,6 +137,8 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
             try {
                 CacheResponse resp = fut.get(timeoutMs, TimeUnit.MILLISECONDS);
                 return resp == null ? null : resp.value;
+            } catch (InterruptedException interrupted) {
+                throw interrupted;
             } catch (Exception ex) {
                 return null;
             }
@@ -136,6 +148,7 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
     }
 
     public void setCache(String key, String value, long ttlMs) {
+        if (closed) return;
         String requestId = Long.toHexString(System.nanoTime()) + java.util.UUID.randomUUID().toString();
         try { sendMessage(buildCacheSetPayload(requestId, key, value, ttlMs)); } catch (Exception ignored) {}
     }
@@ -166,7 +179,7 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        if (!this.channel.equals(channel)) return;
+        if (closed || !this.channel.equals(channel)) return;
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(message))) {
             String action = in.readUTF();
             String incomingSecret = in.readUTF();
@@ -185,5 +198,15 @@ public class PluginMessagingTransport implements LockTransport, PluginMessageLis
                 if (fut != null) fut.complete(new CacheResponse(value.length() == 0 ? null : value, expiresAt));
             }
         } catch (Exception ignored) {}
+    }
+
+    @Override public void close() {
+        closed = true;
+        pending.values().forEach(future -> future.complete(null));
+        pendingCache.values().forEach(future -> future.complete(null));
+        pending.clear();
+        pendingCache.clear();
+        Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, channel);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, channel, this);
     }
 }

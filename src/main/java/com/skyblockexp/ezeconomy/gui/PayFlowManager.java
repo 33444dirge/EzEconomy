@@ -5,43 +5,22 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import com.skyblockexp.ezeconomy.core.Money;
 
-/**
- * Tracks pending pay flows for players that are entering custom amounts via chat
- * and stores pending confirmation transfers created by the `/pay` command.
- */
+/** Immutable flow snapshots shared by entity ticks and asynchronous chat callbacks. */
 public class PayFlowManager {
-    private static class Flow {
-        UUID targetUuid;
-        String targetName;
-        Money amount; // null until set
-        String currency;
-        long expiresAtMillis;
-        boolean awaitingAmount;
-
-        Flow(UUID targetUuid, String targetName, boolean awaitingAmount) {
-            this.targetUuid = targetUuid;
-            this.targetName = targetName;
-            this.awaitingAmount = awaitingAmount;
-        }
-    }
-
+    private record Flow(UUID targetUuid, String targetName, Money amount, String currency,
+                        long expiresAtMillis, boolean awaitingAmount) {}
     private final Map<UUID, Flow> flows = new ConcurrentHashMap<>();
 
     public static class PendingTransfer {
-        private final UUID toUuid; // may be null
+        private final UUID toUuid;
         private final String toName;
         private final Money amount;
         private final String currency;
         private final long expiresAtMillis;
-
         public PendingTransfer(UUID toUuid, String toName, Money amount, String currency, long expiresAtMillis) {
-            this.toUuid = toUuid;
-            this.toName = toName;
-            this.amount = amount;
-            this.currency = currency;
-            this.expiresAtMillis = expiresAtMillis;
+            this.toUuid = toUuid; this.toName = toName; this.amount = amount;
+            this.currency = currency; this.expiresAtMillis = expiresAtMillis;
         }
-
         public UUID getToUuid() { return toUuid; }
         public String getToName() { return toName; }
         public Money getAmount() { return amount; }
@@ -49,76 +28,40 @@ public class PayFlowManager {
         public long getExpiresAtMillis() { return expiresAtMillis; }
     }
 
-    // Start a flow that is awaiting a custom amount via chat
     public void startAwaiting(UUID source, UUID targetUuid, String targetName) {
-        flows.put(source, new Flow(targetUuid, targetName, true));
+        startAwaiting(source, targetUuid, targetName, System.currentTimeMillis() + 30_000L);
     }
-
+    public void startAwaiting(UUID source, UUID targetUuid, String targetName, long expiresAt) {
+        flows.compute(source, (id, old) -> new Flow(targetUuid, targetName, null,
+                old == null ? null : old.currency(), expiresAt, true));
+    }
     public void setCurrency(UUID source, String currency) {
-        Flow f = flows.get(source);
-        if (f == null) {
-            f = new Flow(null, null, false);
-            flows.put(source, f);
-        }
-        f.currency = currency;
+        flows.compute(source, (id, old) -> old == null
+                ? new Flow(null, null, null, currency, System.currentTimeMillis() + 30_000L, false)
+                : new Flow(old.targetUuid(), old.targetName(), old.amount(), currency, old.expiresAtMillis(), old.awaitingAmount()));
     }
-
-    public String getCurrency(UUID source) {
-        Flow f = flows.get(source);
-        return f == null ? null : f.currency;
+    public String getCurrency(UUID source) { Flow flow = current(source); return flow == null ? null : flow.currency(); }
+    public UUID getTarget(UUID source) { Flow flow = current(source); return flow == null ? null : flow.targetUuid(); }
+    public String getTargetName(UUID source) { Flow flow = current(source); return flow == null ? null : flow.targetName(); }
+    public void createPendingTransfer(UUID source, UUID toUuid, String toName, Money amount, String currency, long expiresAt) {
+        flows.put(source, new Flow(toUuid, toName, amount, currency, expiresAt, false));
     }
-
-    // Set or create a pending transfer (awaiting confirmation)
-    public void createPendingTransfer(UUID source, UUID toUuid, String toName, Money amount, String currency, long expiresAtMillis) {
-        Flow f = flows.get(source);
-        if (f == null) {
-            f = new Flow(toUuid, toName, false);
-            flows.put(source, f);
-        }
-        f.targetUuid = toUuid;
-        f.targetName = toName;
-        f.amount = amount;
-        f.currency = currency;
-        f.expiresAtMillis = expiresAtMillis;
-        f.awaitingAmount = false;
+    public PendingTransfer pollPendingTransfer(UUID source) { return pending(flows.remove(source)); }
+    public PendingTransfer getPendingTransfer(UUID source) { return pending(current(source)); }
+    private PendingTransfer pending(Flow flow) {
+        return flow == null || flow.amount() == null || flow.expiresAtMillis() <= System.currentTimeMillis() ? null
+                : new PendingTransfer(flow.targetUuid(), flow.targetName(), flow.amount(), flow.currency(), flow.expiresAtMillis());
     }
-
-    // Poll (remove and return) the pending transfer for the given source
-    public PendingTransfer pollPendingTransfer(UUID source) {
-        Flow f = flows.remove(source);
-        if (f == null || f.amount == null) return null;
-        return new PendingTransfer(f.targetUuid, f.targetName, f.amount, f.currency, f.expiresAtMillis);
-    }
-
-    public PendingTransfer getPendingTransfer(UUID source) {
-        Flow f = flows.get(source);
-        if (f == null || f.amount == null) return null;
-        return new PendingTransfer(f.targetUuid, f.targetName, f.amount, f.currency, f.expiresAtMillis);
-    }
-
-    public UUID getTarget(UUID source) {
-        Flow f = flows.get(source);
-        return f == null ? null : f.targetUuid;
-    }
-
-    public void stopAwaiting(UUID source) {
-        flows.remove(source);
-    }
-
-    public boolean isAwaiting(UUID source) {
-        Flow f = flows.get(source);
-        return f != null && f.awaitingAmount && f.amount == null;
-    }
-
-    public boolean isPendingConfirm(UUID source) {
-        Flow f = flows.get(source);
-        return f != null && f.amount != null;
-    }
-
-    public void removeIfExpired(UUID source) {
-        Flow f = flows.get(source);
-        if (f != null && f.amount != null && f.expiresAtMillis <= System.currentTimeMillis()) {
-            flows.remove(source);
-        }
+    public void stopAwaiting(UUID source) { flows.remove(source); }
+    public boolean isAwaiting(UUID source) { Flow flow = current(source); return flow != null && flow.awaitingAmount(); }
+    public boolean isPendingConfirm(UUID source) { return getPendingTransfer(source) != null; }
+    public void removeIfExpired(UUID source) { current(source); }
+    public void clear() { flows.clear(); }
+    public void cleanUp() { flows.forEach((id, flow) -> { if (expired(flow)) flows.remove(id, flow); }); }
+    private boolean expired(Flow flow) { return flow.expiresAtMillis() <= System.currentTimeMillis(); }
+    private Flow current(UUID source) {
+        Flow flow = flows.get(source);
+        if (flow != null && expired(flow)) { flows.remove(source, flow); return null; }
+        return flow;
     }
 }

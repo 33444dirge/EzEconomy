@@ -5,6 +5,7 @@ import com.skyblockexp.ezeconomy.core.EzEconomyPlugin;
 
 public class ManagersComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
+    private com.skyblockexp.ezeconomy.util.scheduler.ScheduledTask flowCleanup;
 
     public ManagersComponent(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -17,6 +18,8 @@ public class ManagersComponent implements BootstrapComponent {
 
     @Override
     public void stop() {
+        if (flowCleanup != null) { flowCleanup.cancel(); flowCleanup = null; }
+        if (plugin.getPayFlowManager() != null) plugin.getPayFlowManager().clear();
         if (plugin.getBankInterestManager() != null) {
             try { plugin.getBankInterestManager().stop(); } catch (Exception ignored) {}
         }
@@ -29,6 +32,7 @@ public class ManagersComponent implements BootstrapComponent {
     }
 
     private void initManagers() {
+        stop();
         // Initialize managers previously owned by the main plugin class
         com.skyblockexp.ezeconomy.manager.CurrencyPreferenceManager pref = new com.skyblockexp.ezeconomy.manager.CurrencyPreferenceManager(plugin);
         com.skyblockexp.ezeconomy.manager.CurrencyManager cm = new com.skyblockexp.ezeconomy.manager.CurrencyManager(plugin);
@@ -47,5 +51,6 @@ public class ManagersComponent implements BootstrapComponent {
         plugin.setBankInterestManager(bank);
         plugin.setDailyRewardManager(drm);
         plugin.setPayFlowManager(pfm);
+        flowCleanup = com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runTaskTimer(plugin, pfm::cleanUp, 600L, 600L);
     }
 }

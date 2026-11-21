@@ -76,6 +76,8 @@ public class EzEconomyMetrics {
         this.metrics = m;
     }
 
+    public void close() { if (metrics != null) metrics.shutdown(); }
+
     public Metrics getMetrics() {
         return metrics;
     }

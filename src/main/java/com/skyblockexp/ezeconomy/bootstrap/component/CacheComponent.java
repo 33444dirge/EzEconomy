@@ -10,11 +10,17 @@ import com.skyblockexp.ezeconomy.cache.CachingStrategy;
  */
 public class CacheComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
+    private com.skyblockexp.ezeconomy.util.scheduler.ScheduledTask maintenance;
 
     public CacheComponent(EzEconomyPlugin plugin) { this.plugin = plugin; }
 
     @Override
     public void start() {
+        stop();
+        maintenance = com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runTaskTimer(plugin, () -> {
+            CacheManager.cleanUp();
+            com.skyblockexp.ezeconomy.storage.TransferLockManager.cleanUp();
+        }, 1200L, 1200L);
         String caching = plugin.getConfig().getString("caching-strategy", plugin.getConfig().getString("locking-strategy", "LOCAL")).toUpperCase();
         try {
             CacheManager.setStrategy(CachingStrategy.valueOf(caching));
@@ -27,7 +33,8 @@ public class CacheComponent implements BootstrapComponent {
 
     @Override
     public void stop() {
-        // nothing to stop for cache manager
+        if (maintenance != null) { maintenance.cancel(); maintenance = null; }
+        CacheManager.close();
     }
 
     @Override

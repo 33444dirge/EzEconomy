@@ -17,7 +17,16 @@ public class HistoryAction extends GuiAction {
     @Override
     public void open(EzEconomyPlugin plugin, Player player) {
         String currency = plugin.getDefaultCurrency();
-        var txs = plugin.getTransactions(player.getUniqueId(), currency);
+        java.util.UUID uuid = player.getUniqueId();
+        if (!plugin.submitIo(() -> {
+            var transactions = plugin.getTransactions(uuid, currency);
+            com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, player,
+                    () -> show(plugin, player, transactions), () -> {}, 1L);
+        })) com.skyblockexp.ezeconomy.util.MessageUtils.sendRaw(player, plugin, "History queries are busy; please try again.");
+    }
+
+    private void show(EzEconomyPlugin plugin, Player player,
+                      java.util.List<com.skyblockexp.ezeconomy.api.storage.models.Transaction> txs) {
         int size = 9 * Math.max(1, (int) Math.ceil(txs.size() / 9.0));
         String title = plugin.getUserGuiConfig().getString("title.history", "EzEconomy - History");
         Inventory inv = Bukkit.createInventory(new GuiInventoryHolder("history"), Math.min(54, size), GuiUtils.formatMiniMessage(title));

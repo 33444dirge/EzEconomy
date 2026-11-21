@@ -30,6 +30,7 @@ public class MessagingComponent implements BootstrapComponent {
 		if (messagingService != null) {
 			messagingService.unregister();
 			messagingService = null;
+			plugin.setMessagingService(null);
 		}
 	}
 

@@ -136,7 +136,9 @@ public class SQLiteStorageProvider implements StorageProvider {
                 int qsize = dbConfig.getInt("sqlite.background-queue-size", 10000);
                 int batchSize = dbConfig.getInt("sqlite.background-batch-size", 256);
                 long flushMs = dbConfig.getLong("sqlite.background-flush-ms", 100L);
-                backgroundPersistence = new SQLiteBackgroundPersistenceService(plugin, file.getAbsolutePath(), this.table, qsize, batchSize, flushMs);
+                if (balanceCacheEnabled && plugin.getConfig().getBoolean("performance.sqlite.background-persistence.enabled", true)) {
+                    backgroundPersistence = new SQLiteBackgroundPersistenceService(plugin, file.getAbsolutePath(), this.table, qsize, batchSize, flushMs);
+                }
             } catch (Exception ignored) {}
         } catch (Exception e) {
             plugin.getLogger().severe("SQLite connection failed: " + e.getMessage());
@@ -414,12 +416,11 @@ public class SQLiteStorageProvider implements StorageProvider {
                 String id = BalanceModel.idFor(uuid, currency);
                 // If background persistence is enabled, enqueue the delta and update cache immediately.
                 if (backgroundPersistence != null) {
-                    // read base balance (prefer cache)
                     Double cached = getCached(cacheKey);
+                    if (cached == null) backgroundPersistence.flushIdSync(id);
                     double base = cached != null ? cached.doubleValue() : balanceRepo.find(id).map(BalanceModel::getBalance).orElse(0.0);
                     backgroundPersistence.submitBalanceDelta(id, uuid.toString(), currency, amount);
-                    double pending = backgroundPersistence.peekPendingSum(id);
-                    double updated = base + pending;
+                    double updated = base + amount;
                     putCached(cacheKey, updated);
                     return EconomyMutationResult.success(updated);
                 }
@@ -457,44 +458,9 @@ public class SQLiteStorageProvider implements StorageProvider {
         synchronized (lock) {
             try {
                 String id = BalanceModel.idFor(uuid, currency);
-                // Fast-path: if background persistence is available, attempt a
-                // non-blocking reserve by submitting a negative pending delta
-                // rather than flushing and performing a synchronous update.
-                if (backgroundPersistence != null) {
-                    Double cached = getCached(cacheKey);
-                    double pending = backgroundPersistence.peekPendingSum(id);
-                    try {
-                        if (cached != null) {
-                            double available = cached.doubleValue() + pending;
-                            if (available < amount) return EconomyMutationResult.failure(available, "Insufficient funds");
-                            backgroundPersistence.submitBalanceDelta(id, uuid.toString(), currency, -amount);
-                            double updated = available - amount;
-                            putCached(cacheKey, updated);
-                            return EconomyMutationResult.success(updated);
-                        }
-                    } catch (Throwable ignored) {
-                        // fall through to DB-assisted path
-                    }
-
-                    // No safe cache available: read stored balance and combine with pending
-                    try {
-                        double dbBal = balanceRepo.find(id).map(BalanceModel::getBalance).orElse(0.0);
-                        double available = dbBal + pending;
-                        if (available < amount) return EconomyMutationResult.failure(available, "Insufficient funds");
-                        backgroundPersistence.submitBalanceDelta(id, uuid.toString(), currency, -amount);
-                        double updated = available - amount;
-                        putCached(cacheKey, updated);
-                        return EconomyMutationResult.success(updated);
-                    } catch (StorageException se) {
-                        plugin.getLogger().severe("[EzEconomy] SQLite withdraw fast-path failed (db read): " + se.getMessage());
-                        // fall through to legacy flush-and-update path
-                    }
-                }
-
-                // Legacy safe path: flush pending deposits and perform atomic update
-                try {
-                    if (backgroundPersistence != null) backgroundPersistence.flushIdSync(id);
-                } catch (Exception ignored) {}
+                // The cache already includes submitted deltas. Adding pending again can
+                // double-count deposits and authorize an overdraft. Settle against SQL.
+                if (backgroundPersistence != null) backgroundPersistence.flushIdSync(id);
                 ensureHotStatements();
                 psWithdrawIfEnough.setDouble(1, amount);
                 psWithdrawIfEnough.setString(2, id);

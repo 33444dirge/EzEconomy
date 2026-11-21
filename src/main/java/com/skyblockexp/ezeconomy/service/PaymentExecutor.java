@@ -42,7 +42,7 @@ public class PaymentExecutor {
         UUID fromUuid = from.getUniqueId();
 
         if (online == null) {
-            OfflinePlayer localOffline = Bukkit.getOfflinePlayer(toName);
+            OfflinePlayer localOffline = com.skyblockexp.ezeconomy.util.PlayerLookup.findByName(toName).orElse(null);
             boolean localKnown = localOffline != null && localOffline.hasPlayedBefore();
 
             if (localKnown) {
@@ -85,7 +85,7 @@ public class PaymentExecutor {
         if (payEvent.isCancelled()) {
             String reason = payEvent.getCancelReason();
             if (reason != null && !reason.isEmpty()) {
-                from.sendMessage(reason);
+                MessageUtils.sendRaw(from, plugin, reason);
             } else {
                 MessageUtils.send(from, plugin, "payment_cancelled");
             }
@@ -119,7 +119,7 @@ public class PaymentExecutor {
                             MessageUtils.send(from, plugin, "not_enough_money");
                             return true;
                         }
-                        boolean withdrew = storage.tryWithdraw(fromUuid, currency, netAmount);
+                        boolean withdrew = com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.excludedWithdraw(storage, fromUuid, currency, netAmount);
                         debug(plugin, "PaymentExecutor: tryWithdraw result=" + withdrew);
                         if (!withdrew) {
                             debug(plugin, "PaymentExecutor: withdrawFailed, aborting");
@@ -187,7 +187,7 @@ public class PaymentExecutor {
                     MessageUtils.send(from, plugin, "not_enough_money");
                     return true;
                 }
-                boolean withdrew = storage.tryWithdraw(fromUuid, currency, netAmount);
+                boolean withdrew = com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.excludedWithdraw(storage, fromUuid, currency, netAmount);
                 debug(plugin, "PaymentExecutor: tryWithdraw result=" + withdrew);
                 if (!withdrew) {
                     debug(plugin, "PaymentExecutor: withdraw failed, aborting");
@@ -242,7 +242,7 @@ public class PaymentExecutor {
         // Simple transfer
         debug(plugin, "PaymentExecutor: performing simple transfer via storage.transfer");
         TransferResult transfer = storage.transfer(fromUuid, toOffline.getUniqueId(), currency, netAmount);
-        plugin.getLogger().info("PaymentExecutor: transfer result success=" + transfer.isSuccess()
+        debug(plugin, "PaymentExecutor: transfer result success=" + transfer.isSuccess()
                 + " debit=" + netAmount + " " + currency
                 + " fromBalancePost=" + transfer.getFromBalance()
                 + " toBalancePost=" + transfer.getToBalance());

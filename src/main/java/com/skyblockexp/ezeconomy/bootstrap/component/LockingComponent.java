@@ -13,12 +13,11 @@ import java.util.function.Supplier;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import java.io.File;
-import com.skyblockexp.ezeconomy.cache.CacheManager;
-import com.skyblockexp.ezeconomy.cache.CachingStrategy;
 
 public class LockingComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
     private LockManager manager;
+    private final java.util.List<URLClassLoader> extensionLoaders = new java.util.ArrayList<>();
 
     public LockingComponent(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -27,15 +26,6 @@ public class LockingComponent implements BootstrapComponent {
     @Override
     public void start() {
         FileConfiguration cfg = plugin.getConfig();
-        // Configure cache strategy early from config (backwards-compatible with 'caching-strategy')
-        String caching = cfg.getString("caching-strategy", cfg.getString("locking-strategy", "LOCAL")).toUpperCase();
-        try {
-            CacheManager.setStrategy(CachingStrategy.valueOf(caching));
-            plugin.getLogger().info("Cache strategy set to " + caching);
-        } catch (IllegalArgumentException ia) {
-            CacheManager.setStrategy(CachingStrategy.LOCAL);
-            plugin.getLogger().warning("Unknown caching-strategy '" + caching + "', defaulting to LOCAL");
-        }
         String strategy = cfg.getString("locking-strategy", "LOCAL").toUpperCase();
         // Load redis.yml from data folder (save default resource if missing)
         File redisFile = new File(plugin.getDataFolder(), "redis.yml");
@@ -70,7 +60,9 @@ public class LockingComponent implements BootstrapComponent {
                         File[] jars = libs.listFiles((d, name) -> name.endsWith(".jar"));
                         if (jars != null) {
                             for (File jar : jars) {
-                                try (URLClassLoader cl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, this.getClass().getClassLoader())) {
+                                try {
+                                    URLClassLoader cl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, this.getClass().getClassLoader());
+                                    extensionLoaders.add(cl);
                                     this.manager = safeLoadFirstLockManager(() -> ServiceLoader.load(LockManager.class, cl).iterator(), "jar " + jar.getName());
                                     if (this.manager != null) {
                                         plugin.getLogger().info("Loaded LockManager from " + jar.getName() + ": " + this.manager.getClass().getName());
@@ -109,6 +101,8 @@ public class LockingComponent implements BootstrapComponent {
                             Class<?> bmClazz = Class.forName("com.skyblockexp.ezeconomy.lock.BungeeLockManager");
                             java.lang.reflect.Method setGlobal = bmClazz.getMethod("setGlobalTransport", Class.forName("com.skyblockexp.ezeconomy.lock.transport.LockTransport"));
                             setGlobal.invoke(null, transport);
+                            // The manager captures its transport in its constructor.
+                            this.manager = (LockManager) bmClazz.getConstructor().newInstance();
                             plugin.getLogger().info("Wired PluginMessagingTransport for BungeeLockManager");
                         } catch (ClassNotFoundException cnf) {
                             // transport not available on classpath; ignore
@@ -149,7 +143,9 @@ public class LockingComponent implements BootstrapComponent {
                         File[] jars = libs.listFiles((d, name) -> name.endsWith(".jar"));
                         if (jars != null) {
                             for (File jar : jars) {
-                                try (URLClassLoader cl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, this.getClass().getClassLoader())) {
+                                try {
+                                    URLClassLoader cl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, this.getClass().getClassLoader());
+                                    extensionLoaders.add(cl);
                                     this.manager = safeLoadFirstLockManager(() -> ServiceLoader.load(LockManager.class, cl).iterator(), "jar " + jar.getName());
                                     if (this.manager != null) {
                                         plugin.getLogger().info("Loaded LockManager from " + jar.getName() + ": " + this.manager.getClass().getName());
@@ -211,6 +207,11 @@ public class LockingComponent implements BootstrapComponent {
         if (this.manager instanceof AutoCloseable) {
             try { ((AutoCloseable) this.manager).close(); } catch (Exception ignored) {}
         }
+        this.manager = null;
+        for (URLClassLoader loader : extensionLoaders) {
+            try { loader.close(); } catch (IOException ignored) {}
+        }
+        extensionLoaders.clear();
     }
 
     @Override

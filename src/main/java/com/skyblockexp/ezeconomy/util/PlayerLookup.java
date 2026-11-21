@@ -17,11 +17,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * matches first to avoid any blocking or expensive lookups.
  */
 public final class PlayerLookup {
-    private static final Map<String, OfflinePlayer> CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Profile> CACHE = new ConcurrentHashMap<>();
     private static volatile long LAST_REFRESH_MS = 0L;
     private static final long REFRESH_INTERVAL_MS = 60_000L;
 
+    private record Profile(java.util.UUID uuid, String name) {}
+
     private PlayerLookup() {}
+
+    public static void clearCache() { CACHE.clear(); LAST_REFRESH_MS = 0L; }
 
     /**
      * Find an {@link OfflinePlayer} by name.
@@ -37,18 +41,19 @@ public final class PlayerLookup {
 
         String key = name.toLowerCase(Locale.ROOT);
         // Try cache first
-        OfflinePlayer cached = CACHE.get(key);
-        if (cached != null) return Optional.of(cached);
+        Profile cached = CACHE.get(key);
+        if (cached != null) return Optional.of(Bukkit.getOfflinePlayer(cached.uuid()));
 
         // Build cache lazily if empty; this avoids rebuilding on every call.
-        if (CACHE.isEmpty()) {
+        if (LAST_REFRESH_MS == 0L) {
             for (OfflinePlayer op : Bukkit.getOfflinePlayers()) {
                 if (op.getName() != null) {
-                    CACHE.put(op.getName().toLowerCase(Locale.ROOT), op);
+                    CACHE.put(op.getName().toLowerCase(Locale.ROOT), new Profile(op.getUniqueId(), op.getName()));
                 }
             }
+            LAST_REFRESH_MS = System.currentTimeMillis();
             cached = CACHE.get(key);
-            if (cached != null) return Optional.of(cached);
+            if (cached != null) return Optional.of(Bukkit.getOfflinePlayer(cached.uuid()));
         }
 
         // Not found in cache; do not call Bukkit#getOfflinePlayer(name) here to
@@ -65,7 +70,7 @@ public final class PlayerLookup {
         CACHE.clear();
         for (OfflinePlayer op : Bukkit.getOfflinePlayers()) {
             if (op.getName() != null) {
-                CACHE.put(op.getName().toLowerCase(Locale.ROOT), op);
+                CACHE.put(op.getName().toLowerCase(Locale.ROOT), new Profile(op.getUniqueId(), op.getName()));
             }
         }
         LAST_REFRESH_MS = System.currentTimeMillis();
@@ -79,7 +84,7 @@ public final class PlayerLookup {
         if (op == null) return;
         String name = op.getName();
         if (name == null) return;
-        CACHE.put(name.toLowerCase(Locale.ROOT), op);
+        CACHE.put(name.toLowerCase(Locale.ROOT), new Profile(op.getUniqueId(), name));
     }
 
     /**
@@ -101,9 +106,9 @@ public final class PlayerLookup {
         if (prefix == null) return out;
         String p = prefix.toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
-        if (CACHE.isEmpty() || (now - LAST_REFRESH_MS) > REFRESH_INTERVAL_MS) refreshCache();
-        for (OfflinePlayer op : CACHE.values()) {
-            String n = op.getName();
+        if (LAST_REFRESH_MS == 0L || (now - LAST_REFRESH_MS) > REFRESH_INTERVAL_MS) refreshCache();
+        for (Profile op : CACHE.values()) {
+            String n = op.name();
             if (n != null && n.toLowerCase(Locale.ROOT).startsWith(p)) out.add(n);
         }
         return out;

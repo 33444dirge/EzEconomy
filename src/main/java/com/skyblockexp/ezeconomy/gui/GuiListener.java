@@ -52,11 +52,31 @@ public class GuiListener implements Listener {
         boolean ok = holderId != null || title.startsWith("EzEconomy") || title.equals(menuTitle) || title.equals(payTitle) || title.equals(historyTitle) || title.equals(balanceTitle) || title.equals(confirmPayTitle) || title.startsWith(payToPrefix) || title.equals(rawMenu) || title.equals(rawPay) || title.equals(rawHistory) || title.equals(rawBalance) || title.equals(rawConfirm) || title.startsWith(rawPayToPrefix);
         if (!ok) return;
         e.setCancelled(true);
+        if (e.getClickedInventory() != e.getView().getTopInventory()) return;
         ItemStack item = e.getCurrentItem();
-        if (item == null || !item.hasItemMeta()) return;
+        if (item == null || !item.hasItemMeta() || !(e.getWhoClicked() instanceof Player player)) return;
+        String actionHolder = holderId;
+        ItemStack clicked = item.clone();
+        PlatformScheduler.runForPlayer(plugin, player,
+                () -> handleClick(player, title, actionHolder, clicked), () -> {}, 1L);
+    }
+
+    private void handleClick(Player player, String title, String holderId, ItemStack item) {
+        var cfg = plugin.getUserGuiConfig();
+        String menuTitle = GuiUtils.formatMiniMessage(cfg.getString("title.menu", "EzEconomy - Menu"));
+        String payTitle = GuiUtils.formatMiniMessage(cfg.getString("title.pay", "EzEconomy - Pay"));
+        String historyTitle = GuiUtils.formatMiniMessage(cfg.getString("title.history", "EzEconomy - History"));
+        String confirmPayTitle = GuiUtils.formatMiniMessage(cfg.getString("title.confirm_pay", "EzEconomy - Confirm Pay"));
+        String payToPrefix = GuiUtils.formatMiniMessage(cfg.getString("title.pay_to_prefix", "EzEconomy - Pay to "));
+        String balanceTitle = GuiUtils.formatMiniMessage(cfg.getString("title.balance", "\u00A7aYour Balances"));
+
+        String rawMenu = "EzEconomy - Menu";
+        String rawPay = "EzEconomy - Pay";
+        String rawHistory = "EzEconomy - History";
+        String rawConfirm = "EzEconomy - Confirm Pay";
+        String rawPayToPrefix = "EzEconomy - Pay to ";
         var meta = item.getItemMeta();
         String name = meta.hasDisplayName() ? meta.getDisplayName() : "";
-        Player player = (Player) e.getWhoClicked();
         // detect GUI action stored in PDC or legacy lore marker
         java.util.Optional<String> maybeAction = GuiUtils.getGuiAction(meta, plugin);
         if (maybeAction.isPresent()) {
@@ -132,7 +152,7 @@ public class GuiListener implements Listener {
                         plugin.getPayFlowManager().createPendingTransfer(player.getUniqueId(), targetUuid, target, money, currency, expiresAt);
                         player.closeInventory();
                         PayConfirmGui.open(plugin, player, target, bd.toPlainString(), currency);
-                        PlatformScheduler.runTaskLater(plugin, () -> plugin.getPayFlowManager().removeIfExpired(player.getUniqueId()), timeoutSeconds * 20L);
+                        PlatformScheduler.runTaskLater(plugin, expiryCleanup(player.getUniqueId()), timeoutSeconds * 20L);
                         return;
                     } catch (NumberFormatException ex) {
                         player.sendMessage(org.bukkit.ChatColor.RED + "Invalid preset amount.");
@@ -142,7 +162,7 @@ public class GuiListener implements Listener {
             }
         }
 
-        if ("menu".equals(holderId) || title.equals(menuTitle) || title.equals(rawMenu) || title.startsWith("EzEconomy")) {
+        if ("menu".equals(holderId) || title.equals(menuTitle) || title.equals(rawMenu)) {
             java.util.Optional<String> maybe = GuiUtils.getGuiAction(meta, plugin);
             if (maybe.isPresent()) {
                 String key = maybe.get();
@@ -197,13 +217,13 @@ public class GuiListener implements Listener {
                     long expiresAt = System.currentTimeMillis() + (timeoutSeconds * 1000L);
                     plugin.getPayFlowManager().createPendingTransfer(player.getUniqueId(), targetUuid, target, money, currency, expiresAt);
                     PayConfirmGui.open(plugin, player, target, amt, currency);
-                    PlatformScheduler.runTaskLater(plugin, () -> plugin.getPayFlowManager().removeIfExpired(player.getUniqueId()), timeoutSeconds * 20L);
+                    PlatformScheduler.runTaskLater(plugin, expiryCleanup(player.getUniqueId()), timeoutSeconds * 20L);
                 } catch (NumberFormatException ex) {
                     player.sendMessage(ChatColor.RED + "Invalid preset amount.");
                 }
             }
         } else if ("confirm_pay".equals(holderId) || title.equals(confirmPayTitle) || title.equals(rawConfirm)) {
-            if (name.contains("Confirm")) {
+            if ("confirm_pay".equals(maybeAction.orElse("")) || name.contains("Confirm")) {
                 // Execute the stored pending transfer for this player
                 var pt = plugin.getPayFlowManager().pollPendingTransfer(player.getUniqueId());
                 if (pt == null) {
@@ -213,7 +233,7 @@ public class GuiListener implements Listener {
                     java.math.BigDecimal bd = pt.getAmount().getAmount();
                     com.skyblockexp.ezeconomy.service.PaymentExecutor.execute(plugin, player, pt.getToName(), bd, pt.getCurrency());
                 }
-            } else if (name.contains("Cancel")) {
+            } else if ("cancel_pay".equals(maybeAction.orElse("")) || name.contains("Cancel")) {
                 player.closeInventory();
                 plugin.getPayFlowManager().stopAwaiting(player.getUniqueId());
                 player.sendMessage(ChatColor.RED + "Payment cancelled.");
@@ -222,30 +242,56 @@ public class GuiListener implements Listener {
     }
 
     @EventHandler
+    public void onDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        var top = event.getView().getTopInventory();
+        if (top.getHolder() instanceof GuiInventoryHolder
+                && event.getRawSlots().stream().anyMatch(slot -> slot < top.getSize())) event.setCancelled(true);
+    }
+
+    @EventHandler
     public void onPlayerChat(AsyncPlayerChatEvent e) {
-        UUID uuid = e.getPlayer().getUniqueId();
+        Player player = e.getPlayer();
+        UUID uuid = player.getUniqueId();
         if (!plugin.getPayFlowManager().isAwaiting(uuid)) return;
         e.setCancelled(true);
-        String msg = e.getMessage().trim();
-        // parse amount (supports suffixes like 1k, 2.5m via NumberUtil)
-        var parsedMoney = com.skyblockexp.ezeconomy.util.NumberUtil.parseMoney(msg, plugin.getDefaultCurrency());
-        if (parsedMoney == null) {
-            e.getPlayer().sendMessage(ChatColor.RED + "Invalid number. Please enter a valid amount.");
+        String input = e.getMessage().trim();
+        PlatformScheduler.runForPlayer(plugin, player, () -> acceptAmount(player, input),
+                () -> plugin.getPayFlowManager().stopAwaiting(uuid), 1L);
+    }
+
+    private void acceptAmount(Player player, String input) {
+        UUID uuid = player.getUniqueId();
+        var flows = plugin.getPayFlowManager();
+        if (!flows.isAwaiting(uuid)) return;
+        String currency = flows.getCurrency(uuid);
+        if (currency == null) currency = plugin.getDefaultCurrency();
+        var money = com.skyblockexp.ezeconomy.util.NumberUtil.parseMoney(input, currency);
+        if (money == null || money.getAmount().signum() <= 0) {
+            player.sendMessage(ChatColor.RED + "Invalid number. Please enter a positive amount.");
             return;
         }
-        UUID target = plugin.getPayFlowManager().getTarget(uuid);
-        if (target == null) {
-            e.getPlayer().sendMessage(ChatColor.RED + "Target not found or expired.");
-            plugin.getPayFlowManager().stopAwaiting(uuid);
+        UUID target = flows.getTarget(uuid);
+        String targetName = flows.getTargetName(uuid);
+        if (target == null || targetName == null) {
+            player.sendMessage(ChatColor.RED + "Target not found or expired.");
+            flows.stopAwaiting(uuid);
             return;
         }
-        String targetName = plugin.getServer().getPlayer(target) != null ? plugin.getServer().getPlayer(target).getName() : target.toString();
-        // create pending transfer and open confirm GUI on main thread
-        int timeoutSeconds = plugin.getConfig().getInt("pay.confirmation.timeout_seconds", 30);
-        long expiresAt = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-        plugin.getPayFlowManager().createPendingTransfer(uuid, target, targetName, parsedMoney, plugin.getDefaultCurrency(), expiresAt);
-        PlatformScheduler.runTask(plugin, () -> PayConfirmGui.open(plugin, e.getPlayer(), targetName, parsedMoney.getAmount().toPlainString(), parsedMoney.getCurrencyId()));
-        PlatformScheduler.runTaskLater(plugin, () -> plugin.getPayFlowManager().removeIfExpired(uuid), timeoutSeconds * 20L);
+        int timeout = Math.max(1, plugin.getConfig().getInt("pay.confirmation.timeout_seconds", 30));
+        flows.createPendingTransfer(uuid, target, targetName, money, money.getCurrencyId(),
+                System.currentTimeMillis() + timeout * 1000L);
+        PayConfirmGui.open(plugin, player, targetName, money.getAmount().toPlainString(), money.getCurrencyId());
+        PlatformScheduler.runTaskLater(plugin, expiryCleanup(uuid), timeout * 20L);
+    }
+
+    private Runnable expiryCleanup(UUID uuid) {
+        var flows = plugin.getPayFlowManager();
+        return () -> flows.removeIfExpired(uuid);
+    }
+
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        plugin.getPayFlowManager().stopAwaiting(event.getPlayer().getUniqueId());
     }
 
     private java.util.UUID getPlayerUuidByName(String name) {

@@ -16,10 +16,19 @@ public final class MessageUtils {
     public static void send(CommandSender sender, EzEconomyPlugin plugin, String key, Map<String, String> placeholders) {
         MessageProvider messages = provider(plugin);
         if (messages == null) {
-            sender.sendMessage("[EzEconomy] Message system not initialized.");
+            sendRaw(sender, plugin, "[EzEconomy] Message system not initialized.");
             return;
         }
-        sender.sendMessage(messages.get(key, placeholders));
+        sendRaw(sender, plugin, messages.get(key, placeholders));
+    }
+
+    public static void sendRaw(CommandSender sender, EzEconomyPlugin plugin, String message) {
+        if (plugin != null && sender instanceof org.bukkit.entity.Player player
+                && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isFolia()
+                && !org.bukkit.Bukkit.isOwnedByCurrentRegion(player)) {
+            com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, player,
+                    () -> player.sendMessage(message), () -> {}, 1L);
+        } else sender.sendMessage(message);
     }
 
     public static String format(EzEconomyPlugin plugin, String key) {

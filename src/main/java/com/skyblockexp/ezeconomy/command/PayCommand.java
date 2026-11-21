@@ -22,7 +22,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
- 
+
 
 public class PayCommand implements CommandExecutor {
     private final EzEconomyPlugin plugin;
@@ -127,7 +127,9 @@ public class PayCommand implements CommandExecutor {
             plugin.getPayFlowManager().createPendingTransfer(from.getUniqueId(), to == null ? null : to.getUniqueId(), operands[0], money, currency, expiresAt);
             MessageUtils.send(sender, plugin, "payment_confirm_required", java.util.Map.of("amount", plugin.getCurrencyFormatter().formatPriceForMessage(amountDecimal.doubleValue(), currency), "timeout", String.valueOf(timeoutSeconds)));
             // Schedule cleanup
-            PlatformScheduler.runTaskLater(plugin, () -> plugin.getPayFlowManager().removeIfExpired(from.getUniqueId()), timeoutSeconds * 20L);
+            UUID sourceUuid = from.getUniqueId();
+            var flows = plugin.getPayFlowManager();
+            PlatformScheduler.runTaskLater(plugin, () -> flows.removeIfExpired(sourceUuid), timeoutSeconds * 20L);
             return true;
         }
 
@@ -176,6 +178,19 @@ public class PayCommand implements CommandExecutor {
                 return true;
             }
 
+            record Credit(UUID uuid, String currency, double amount) {}
+            List<Credit> credits = new ArrayList<>();
+            for (UUID recipient : recipients) {
+                String preferred = plugin.getCurrencyPreferenceManager().getPreferredCurrency(recipient);
+                if (preferred == null) preferred = currency;
+                double value = preferred.equalsIgnoreCase(currency) ? amountDecimal.doubleValue()
+                        : CurrencyUtil.convert(plugin, amountDecimal.doubleValue(), currency, preferred);
+                if (!Double.isFinite(value) || value <= 0) {
+                    MessageUtils.send(sender, plugin, "unknown_currency", Map.of("currency", preferred));
+                    return true;
+                }
+                credits.add(new Credit(recipient, preferred, value));
+            }
             java.math.BigDecimal totalCost = amountDecimal.multiply(java.math.BigDecimal.valueOf(recipients.size()));
             // Withdraw total cost first (unless bypass permission)
             if (!bypassWithdraw) {
@@ -192,20 +207,20 @@ public class PayCommand implements CommandExecutor {
             }
 
             // Deposit to each recipient, honoring their currency preference when possible
-            for (UUID recip : recipients) {
-                String recipPref = plugin.getCurrencyPreferenceManager().getPreferredCurrency(recip);
-                if (recipPref == null || recipPref.equalsIgnoreCase(currency)) {
-                    storage.deposit(recip, currency, amountDecimal.doubleValue());
-                } else {
-                    double credit = CurrencyUtil.convert(plugin, amountDecimal.doubleValue(), currency, recipPref);
-                    if (Double.isNaN(credit)) {
-                        // rollback if we withdrew earlier
-                        if (!bypassWithdraw) storage.deposit(fromUuid, currency, totalCost.doubleValue());
-                        MessageUtils.send(sender, plugin, "unknown_currency", java.util.Map.of("currency", recipPref));
-                        return true;
+            int credited = 0;
+            for (Credit credit : credits) {
+                UUID recip = credit.uuid();
+                if (!storage.depositAndGetBalance(recip, credit.currency(), credit.amount()).isSuccess()) {
+                    if (!bypassWithdraw) {
+                        double refund = amountDecimal.multiply(BigDecimal.valueOf(credits.size() - credited)).doubleValue();
+                        if (!storage.depositAndGetBalance(fromUuid, currency, refund).isSuccess()) {
+                            plugin.getLogger().severe("Payall refund failed for " + fromUuid + "; review amount " + refund + " " + currency);
+                        }
                     }
-                    storage.deposit(recip, recipPref, credit);
+                    MessageUtils.sendRaw(sender, plugin, "Payment stopped after " + credited + " recipients; unpaid amounts were returned where possible.");
+                    return true;
                 }
+                credited++;
                 // Notify online recipients
                 OfflinePlayer op = Bukkit.getOfflinePlayer(recip);
                 if (op != null && op.isOnline() && op.getPlayer() != null) {
@@ -272,7 +287,7 @@ public class PayCommand implements CommandExecutor {
             com.skyblockexp.ezeconomy.service.PaymentExecutor.execute(plugin, from, operands[0], amountDecimal, currency, knownOffline);
         } else {
             boolean ko = knownOffline;
-            PlatformScheduler.runTaskAsync(plugin, () -> {
+            plugin.submitIo(() -> {
                 com.skyblockexp.ezeconomy.service.PaymentExecutor.execute(plugin, from, operands[0], amountDecimal, currency, ko);
             });
         }

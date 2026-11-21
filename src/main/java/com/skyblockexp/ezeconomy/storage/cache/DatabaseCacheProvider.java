@@ -22,6 +22,7 @@ import java.util.Optional;
  * Jaloquent for all subsequent read/write operations.
  */
 public class DatabaseCacheProvider<K, V> implements CacheProvider<K, V> {
+    private Connection connection;
     private EzJdbcStore jdbcStore;
     private ModelRepository<CacheEntryModel> cacheRepo;
 
@@ -35,6 +36,7 @@ public class DatabaseCacheProvider<K, V> implements CacheProvider<K, V> {
             String user = plugin.getConfig().getString("mysql.username", "root");
             String pass = plugin.getConfig().getString("mysql.password", "");
             Connection conn = DriverManager.getConnection("jdbc:mysql://" + host + ":" + port + "/" + database, user, pass);
+            this.connection = conn;
             this.jdbcStore = new EzJdbcStore(conn);
             EzTableRegistry.registerCache("ezeconomy_cache");
             jdbcStore.executeUpdate(
@@ -45,8 +47,17 @@ public class DatabaseCacheProvider<K, V> implements CacheProvider<K, V> {
                 Collections.emptyList());
             this.cacheRepo = new ModelRepository<>(jdbcStore, "cache", CacheEntryModel::new, SqlDialect.MYSQL);
         } catch (Exception ex) {
+            close();
             this.jdbcStore = null;
             this.cacheRepo = null;
+        }
+    }
+
+    @Override public void close() {
+        cacheRepo = null;
+        if (connection != null) {
+            try { connection.close(); } catch (java.sql.SQLException ignored) {}
+            connection = null;
         }
     }
 

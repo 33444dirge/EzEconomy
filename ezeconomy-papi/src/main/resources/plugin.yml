@@ -10,3 +10,5 @@ authors:
   - Shadow48402
 description: "PlaceholderAPI expansion for EzEconomy (exposes multi-currency placeholders)."
 
+
+folia-supported: true

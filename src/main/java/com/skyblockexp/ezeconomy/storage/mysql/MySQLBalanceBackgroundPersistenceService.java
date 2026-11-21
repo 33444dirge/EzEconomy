@@ -146,6 +146,7 @@ public class MySQLBalanceBackgroundPersistenceService {
                 List<String> drained = new ArrayList<>();
                 queue.drainTo(drained);
                 drained.forEach(ids::add);
+                ids.addAll(pending.keySet());
                 if (ids.isEmpty()) continue;
                 List<FlushRecord> batch = new ArrayList<>();
                 for (String key : ids) {

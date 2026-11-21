@@ -18,16 +18,16 @@ public class DailyRewardStorage {
         this.data = load();
     }
 
-    public long getLastReward(UUID uuid) {
+    public synchronized long getLastReward(UUID uuid) {
         return data.getLong(uuid.toString(), 0L);
     }
 
-    public void setLastReward(UUID uuid, long timestamp) {
+    public synchronized void setLastReward(UUID uuid, long timestamp) {
         data.set(uuid.toString(), timestamp);
         save();
     }
 
-    public void reset(UUID uuid) {
+    public synchronized void reset(UUID uuid) {
         data.set(uuid.toString(), null);
         save();
     }

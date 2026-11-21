@@ -20,11 +20,11 @@ public class PlayerLookupListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent e) {
-        PlayerLookup.removeFromCache(e.getPlayer());
+        PlayerLookup.addToCache(e.getPlayer());
     }
 
     @EventHandler
     public void onKick(PlayerKickEvent e) {
-        PlayerLookup.removeFromCache(e.getPlayer());
+        PlayerLookup.addToCache(e.getPlayer());
     }
 }

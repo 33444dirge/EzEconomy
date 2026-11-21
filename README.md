@@ -2,6 +2,8 @@
 
 `jiujiu` 分支的本地源码迁移、构建和消费账本接入说明见 [docs/jiujiu.md](docs/jiujiu.md)。
 
+2026-11-21 的优化、资源释放、Folia 修复和验证结果见 [检查报告](docs/2026-11-21-audit.md)。
+
 ![EzEconomy Icon](https://www.spigotmc.org/data/resource_icons/130/130975.jpg)
 
 [![Release](https://img.shields.io/github/v/release/ez-plugins/EzEconomy?label=release&style=flat-square)](https://github.com/ez-plugins/EzEconomy/releases)

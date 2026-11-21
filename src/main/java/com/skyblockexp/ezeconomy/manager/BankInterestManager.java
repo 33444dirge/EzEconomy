@@ -13,16 +13,8 @@ public class BankInterestManager {
     private final EzEconomyPlugin plugin;
     private ScheduledTask task = null;
 
-    // THREAD SAFETY NOTE:
-    // payInterestToAll() is called from a BukkitRunnable (main server thread),
-    // so storage operations are not concurrent by default. However, if storage
-    // providers are accessed from async tasks elsewhere, or if future changes
-    // introduce async interest payout, all storage operations here must be thread-safe.
-    //
-    // If you plan to run payInterestToAll() asynchronously, ensure:
-    // 1. All storageProvider methods (get/setBalance, getBankBalance, getBankMembers, etc.) are thread-safe.
-    // 2. Use synchronization or locks if the underlying storage is not thread-safe.
-    // 3. Consider using Bukkit's scheduler to run only thread-safe code async, and all Bukkit API calls sync.
+    private final java.util.concurrent.atomic.AtomicBoolean inFlight = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean stopped;
 
     public BankInterestManager(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -32,10 +24,20 @@ public class BankInterestManager {
         if (task != null) {
             task.cancel();
         }
-        task = PlatformScheduler.runTaskTimer(plugin, this::payInterestToAll, intervalTicks, intervalTicks);
+        stopped = false;
+        long period = Math.max(1L, intervalTicks);
+        task = PlatformScheduler.runTaskTimer(plugin, () -> {
+            if (!stopped && inFlight.compareAndSet(false, true)) {
+                if (!plugin.submitIo(() -> {
+                    try { if (!stopped) payInterestToAll(); }
+                    finally { inFlight.set(false); }
+                })) inFlight.set(false);
+            }
+        }, period, period);
     }
 
     public void stop() {
+        stopped = true;
         if (task != null) {
             task.cancel();
             task = null;
@@ -56,8 +58,10 @@ public class BankInterestManager {
         } else {
             currencies = java.util.Collections.singleton("dollar");
         }
+        java.util.Set<String> banks = storage.getBanks();
         for (String currency : currencies) {
-            for (String bank : storage.getBanks()) {
+            for (String bank : banks) {
+                if (stopped) return;
                 double bankBalance = storage.getBankBalance(bank, currency);
                 Set<UUID> members = storage.getBankMembers(bank);
                 if (members == null || members.isEmpty()) continue;
@@ -66,37 +70,11 @@ public class BankInterestManager {
                 for (UUID uuid : members) {
                     OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
                     if (perMemberInterest > 0) {
-                        com.skyblockexp.ezeconomy.lock.LockManager lm = plugin.getLockManager();
-                        if (lm != null) {
-                            String token = null;
-                            try {
-                                token = lm.acquire(uuid, 5000L, 50L, 100);
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt();
-                                token = null;
-                            }
-                            if (token != null) {
-                                try {
-                                    storage.setBalance(uuid, currency, storage.getBalance(uuid, currency) + perMemberInterest);
-                                } finally {
-                                    lm.release(uuid, token);
-                                }
-                            } else {
-                                // fallback to local lock
-                                java.util.concurrent.locks.ReentrantLock l = com.skyblockexp.ezeconomy.storage.TransferLockManager.getLock(uuid);
-                                l.lock();
-                                try {
-                                    storage.setBalance(uuid, currency, storage.getBalance(uuid, currency) + perMemberInterest);
-                                } finally {
-                                    l.unlock();
-                                }
-                            }
-                        } else {
-                            storage.setBalance(uuid, currency, storage.getBalance(uuid, currency) + perMemberInterest);
-                        }
-                        if (player.isOnline()) {
+                        if (!storage.depositAndGetBalance(uuid, currency, perMemberInterest).isSuccess()) continue;
+                        if (player.isOnline() && player.getPlayer() != null) {
                             String compact = plugin.getCurrencyFormatter().formatShort(perMemberInterest, null);
-                            player.getPlayer().sendMessage("You received " + compact + " " + currency + " interest from bank '" + bank + "'");
+                            org.bukkit.entity.Player recipient = player.getPlayer();
+                            PlatformScheduler.runForPlayer(plugin, recipient, () -> recipient.sendMessage("You received " + compact + " " + currency + " interest from bank '" + bank + "'"), () -> {}, 1L);
                         }
                     }
                 }

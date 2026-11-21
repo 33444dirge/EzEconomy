@@ -26,6 +26,7 @@ public class PayConfirmGui {
         ItemMeta cm = confirm.getItemMeta();
         cm.setDisplayName(GuiUtils.formatMiniMessage(cfg.getString("pay.confirm.confirm.display-name", "Confirm")));
         cm.setLore(java.util.List.of(GuiUtils.formatMiniMessage(cfg.getString("pay.confirm.confirm.lore", "Click to confirm payment"))));
+        GuiUtils.setGuiAction(cm, plugin, "confirm_pay");
         confirm.setItemMeta(cm);
         inv.setItem(4, confirm);
 
@@ -33,6 +34,7 @@ public class PayConfirmGui {
         ItemMeta xm = cancel.getItemMeta();
         xm.setDisplayName(GuiUtils.formatMiniMessage(cfg.getString("pay.confirm.cancel.display-name", "Cancel")));
         xm.setLore(java.util.List.of(GuiUtils.formatMiniMessage(cfg.getString("pay.confirm.cancel.lore", "Click to cancel"))));
+        GuiUtils.setGuiAction(xm, plugin, "cancel_pay");
         cancel.setItemMeta(xm);
         inv.setItem(5, cancel);
 

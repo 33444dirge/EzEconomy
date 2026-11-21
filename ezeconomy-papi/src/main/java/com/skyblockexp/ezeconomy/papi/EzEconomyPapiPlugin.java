@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class EzEconomyPapiPlugin extends JavaPlugin {
+    private EzEconomyPAPIExpansion expansion;
     @Override
     public void onEnable() {
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") == null) {
@@ -19,12 +20,14 @@ public class EzEconomyPapiPlugin extends JavaPlugin {
         }
 
         // Register the expansion
-        new EzEconomyPAPIExpansion(this).register();
+        expansion = new EzEconomyPAPIExpansion(this);
+        expansion.register();
         getLogger().info("EzEconomy-PAPI expansion enabled.");
     }
 
     @Override
     public void onDisable() {
+        if (expansion != null) { expansion.unregister(); expansion = null; }
         getLogger().info("EzEconomy-PAPI expansion disabled.");
     }
 }

@@ -68,7 +68,7 @@ public class SQLiteBackgroundPersistenceService {
      * Flush pending deltas for a single id synchronously on the caller thread.
      * Used by withdraw operations to ensure consistency.
      */
-    public void flushIdSync(String id) {
+    public synchronized void flushIdSync(String id) {
         PendingEntry entry = pending.remove(id);
         if (entry == null) return;
         double delta = entry.adder.sumThenReset();
@@ -103,17 +103,20 @@ public class SQLiteBackgroundPersistenceService {
                 java.util.List<String> drained = new ArrayList<>();
                 queue.drainTo(drained);
                 drained.forEach(ids::add);
+                ids.addAll(pending.keySet());
                 if (ids.isEmpty()) continue;
-                List<FlushRecord> batch = new ArrayList<>();
-                for (String key : ids) {
-                    PendingEntry e = pending.remove(key);
-                    if (e == null) continue;
-                    double d = e.adder.sumThenReset();
-                    if (d == 0.0) continue;
-                    batch.add(new FlushRecord(key, e.uuid, e.currency, d));
-                    if (batch.size() >= batchSize) break;
+                synchronized (this) {
+                    List<FlushRecord> batch = new ArrayList<>();
+                    for (String key : ids) {
+                        PendingEntry e = pending.remove(key);
+                        if (e == null) continue;
+                        double d = e.adder.sumThenReset();
+                        if (d == 0.0) continue;
+                        batch.add(new FlushRecord(key, e.uuid, e.currency, d));
+                        if (batch.size() >= batchSize) break;
+                    }
+                    if (!batch.isEmpty()) persistRecords(batch);
                 }
-                if (!batch.isEmpty()) persistRecords(batch);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -125,7 +128,7 @@ public class SQLiteBackgroundPersistenceService {
         }
     }
 
-    private void persistRecords(List<FlushRecord> batch) {
+    private synchronized void persistRecords(List<FlushRecord> batch) {
         if (batch == null || batch.isEmpty()) return;
         String sql = "INSERT INTO " + tableName + " (id, uuid, currency, balance) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET balance = balance + excluded.balance";
         try (Connection conn = DriverManager.getConnection(dbUrl)) {
@@ -143,9 +146,23 @@ public class SQLiteBackgroundPersistenceService {
             } catch (SQLException e) {
                 try { conn.rollback(); } catch (SQLException ignored) {}
                 plugin.getLogger().warning("[EzEconomy] SQLite background persist failed: " + e.getMessage());
+                requeue(batch);
+                throw new IllegalStateException("SQLite balance flush failed", e);
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("[EzEconomy] SQLite background persist connection failed: " + e.getMessage());
+            requeue(batch);
+            throw new IllegalStateException("SQLite balance connection failed", e);
+        }
+    }
+
+    private void requeue(List<FlushRecord> records) {
+        for (FlushRecord record : records) {
+            pending.compute(record.id, (id, entry) -> {
+                if (entry == null) entry = new PendingEntry(record.uuid, record.currency);
+                entry.adder.add(record.delta);
+                return entry;
+            });
         }
     }
 

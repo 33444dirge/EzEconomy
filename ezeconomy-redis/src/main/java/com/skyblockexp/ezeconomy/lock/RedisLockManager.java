@@ -22,7 +22,8 @@ public class RedisLockManager implements LockManager, AutoCloseable {
         if (password != null && !password.isEmpty()) b.withPassword(password.toCharArray());
         RedisURI uri = b.build();
         this.client = RedisClient.create(uri);
-        this.connection = client.connect();
+        try { this.connection = client.connect(); }
+        catch (RuntimeException failure) { client.shutdown(); throw failure; }
         this.commands = connection.sync();
     }
 
@@ -33,7 +34,7 @@ public class RedisLockManager implements LockManager, AutoCloseable {
         SetArgs args = SetArgs.Builder.nx().px(ttlMs);
         boolean primaryThread = false;
         try {
-            primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread();
+            primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread();
         } catch (Throwable ignored) {
             primaryThread = false;
         }
@@ -74,7 +75,7 @@ public class RedisLockManager implements LockManager, AutoCloseable {
         String script = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
         boolean primaryThread = false;
         try {
-            primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread();
+            primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread();
         } catch (Throwable ignored) {
             primaryThread = false;
         }

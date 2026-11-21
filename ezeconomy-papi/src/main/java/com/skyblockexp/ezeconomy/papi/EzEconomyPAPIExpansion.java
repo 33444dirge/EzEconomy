@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 public class EzEconomyPAPIExpansion extends PlaceholderExpansion {
     private final EzEconomyPapiPlugin plugin;
     // Use the globally-selected cache provider; default is LOCAL.
-    private final CacheProvider<String, String> topCache = CacheManager.getProvider();
+    private final java.util.Set<String> refreshing = ConcurrentHashMap.newKeySet();
     private static final long TOP_CACHE_TTL_MS = 30_000L; // 30 seconds
 
     public EzEconomyPAPIExpansion(EzEconomyPapiPlugin plugin) {
@@ -72,7 +72,7 @@ public class EzEconomyPAPIExpansion extends PlaceholderExpansion {
     }
 
     private String handlePlaceholderRequest(OfflinePlayer offlinePlayer, String identifier) {
-        // Entry log removed for test cleanliness; rely on plugin logger when available.
+        CacheProvider<String, String> topCache = CacheManager.getProvider();
         EzEconomyPlugin ezPlugin = null;
         TestEzEconomy testEz = TEST_ECONOMY_FOR_TESTS;
         if (testEz == null) {
@@ -211,7 +211,7 @@ public class EzEconomyPAPIExpansion extends PlaceholderExpansion {
                 // format: top_<n>_<currency>
                 String[] parts = identifier.split("_");
                 if (parts.length < 3) return "";
-                final int nFinal = parseIntOrDefault(parts[1], 10);
+                final int nFinal = Math.max(1, Math.min(1000, parseIntOrDefault(parts[1], 10)));
                 String currency = parts[2];
                 String cacheKey = "top:" + currency + ":" + nFinal;
 
@@ -257,6 +257,7 @@ public class EzEconomyPAPIExpansion extends PlaceholderExpansion {
                         if (plugin != null) plugin.getLogger().warning("Failed to compute top placeholder for " + cacheKey + ": " + t.getMessage());
                     }
                 } else {
+                    if (!refreshing.add(cacheKey)) return safe(previous);
                     EzEconomyPlugin finalEz = ezPlugin;
                     PlatformScheduler.runTaskAsync(plugin, () -> {
                         try {
@@ -286,7 +287,7 @@ public class EzEconomyPAPIExpansion extends PlaceholderExpansion {
                             topCache.put(cacheKey, result, TOP_CACHE_TTL_MS);
                         } catch (Throwable t) {
                             plugin.getLogger().warning("Failed to compute top placeholder for " + cacheKey + ": " + t.getMessage());
-                        }
+                        } finally { refreshing.remove(cacheKey); }
                     });
                 }
 

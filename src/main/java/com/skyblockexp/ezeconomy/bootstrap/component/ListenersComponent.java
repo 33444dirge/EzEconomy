@@ -9,6 +9,7 @@ import org.bukkit.Bukkit;
 
 public class ListenersComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
+    private final java.util.List<org.bukkit.event.Listener> listeners = new java.util.ArrayList<>();
 
     public ListenersComponent(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -16,15 +17,23 @@ public class ListenersComponent implements BootstrapComponent {
 
     @Override
     public void start() {
-        Bukkit.getPluginManager().registerEvents(new PlayerJoinListener(plugin, plugin.getDailyRewardManager()), plugin);
+        stop();
+        register(new PlayerJoinListener(plugin, plugin.getDailyRewardManager()));
         // Keep PlayerLookup cache in sync with player activity
-        Bukkit.getPluginManager().registerEvents(new PlayerLookupListener(), plugin);
-        Bukkit.getPluginManager().registerEvents(new GuiListener(plugin), plugin);
+        register(new PlayerLookupListener());
+        register(new GuiListener(plugin));
+    }
+
+    private void register(org.bukkit.event.Listener listener) {
+        listeners.add(listener);
+        Bukkit.getPluginManager().registerEvents(listener, plugin);
     }
 
     @Override
     public void stop() {
-        // Bukkit unregisters listeners on plugin disable; nothing generic here.
+        listeners.forEach(org.bukkit.event.HandlerList::unregisterAll);
+        listeners.clear();
+        com.skyblockexp.ezeconomy.util.PlayerLookup.clearCache();
     }
 
     @Override

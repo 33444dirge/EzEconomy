@@ -32,6 +32,7 @@ public class BackgroundPersistenceService {
     }
 
     public void submitPlayerSave(UUID uuid, String name, String displayName) {
+        if (!running) return;
         PlayerSave ps = new PlayerSave(uuid, name, displayName);
         if (!queue.offer(ps)) {
             plugin.getLogger().warning("[EzEconomy] Background persistence queue full; dropping player save for " + uuid);
@@ -41,6 +42,10 @@ public class BackgroundPersistenceService {
     public void shutdown() {
         running = false;
         worker.interrupt();
+        try { worker.join(2000L); }
+        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        PlayerSave pending;
+        while ((pending = queue.poll()) != null) persist(pending);
     }
 
     private void runLoop() {

@@ -18,13 +18,14 @@ import org.bukkit.event.server.PluginDisableEvent;
 /** Bounded asynchronous balance command; no balance mutations. */
 public final class BalanceCommand implements CommandExecutor, Listener, AutoCloseable {
     private final EzEconomyPlugin plugin;
-    private final BalanceScheduler scheduler;
+    private final boolean folia;
     private final ThreadPoolExecutor readers;
     private final ConcurrentHashMap<Object,Query> pending=new ConcurrentHashMap<>();
     private final AtomicBoolean closed=new AtomicBoolean();
     private final String busyMessage,failureMessage;
     public BalanceCommand(EzEconomyPlugin plugin){
-        this.plugin=plugin;this.scheduler=new BalanceScheduler(plugin);
+        this.plugin=plugin;
+        this.folia=com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isFolia();
         var config=plugin.getConfig();
         int threads=Math.max(1,Math.min(16,config.getInt("performance.balance-command.workers",2)));
         int capacity=Math.max(1,Math.min(4096,config.getInt("performance.balance-command.queue-capacity",128)));
@@ -81,7 +82,7 @@ public final class BalanceCommand implements CommandExecutor, Listener, AutoClos
         final double result=balance;final boolean valid=success;
         CommandSender recipient=query.sender.get();
         if(closed.get()||recipient==null){pending.remove(query.key,query);return;}
-        scheduler.reply(recipient,()->{
+        Runnable reply = ()->{
             try{
                 if(closed.get()||pending.get(query.key)!=query||!plugin.isEnabled())return;
                 if(query.other&&!otherPermission(recipient)){MessageUtils.send(recipient,plugin,"no_permission_others_balance");return;}
@@ -91,7 +92,14 @@ public final class BalanceCommand implements CommandExecutor, Listener, AutoClos
                 if(query.other)values.put("player",query.targetName);
                 MessageUtils.send(recipient,plugin,query.other?"others_balance":"your_balance",values);
             }finally{pending.remove(query.key,query);}
-        },()->pending.remove(query.key,query));
+        };
+        Runnable retired = () -> pending.remove(query.key,query);
+        if (recipient instanceof Player player) {
+            com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runForPlayer(plugin, player, reply, retired, 1L, folia);
+        } else {
+            try { com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.runTask(plugin, reply); }
+            catch (RuntimeException failure) { retired.run(); }
+        }
     }
     private record Query(Object key,WeakReference<CommandSender> sender,UUID target,String targetName,String currency,boolean other){}
     @EventHandler public void disabled(PluginDisableEvent event){if(event.getPlugin()==plugin)close();}

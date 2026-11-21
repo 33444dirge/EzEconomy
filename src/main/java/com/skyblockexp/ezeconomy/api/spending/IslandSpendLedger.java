@@ -63,6 +63,12 @@ public final class IslandSpendLedger {
     public static synchronized void sqlite(EzEconomyPlugin p,Connection c,Object lock,String table){
         backend=new Backend(p,null,c,lock,table,false);BINDING.set(null);prepared=false;
     }
+    public static synchronized void reconnect(EzEconomyPlugin plugin, Connection connection, String table) {
+        Backend current = backend;
+        if (current != null && current.mysql() && current.plugin() == plugin && current.balance().equals(table)) {
+            backend = new Backend(plugin, current.pool(), connection, connection, table, true);
+        }
+    }
     public static void close(){BINDING.set(null);backend=null;prepared=false;EXCLUDED.remove();ORDER.remove();}
     public static boolean ready(){return prepared&&BINDING.get()!=null;}
     /** Call on IO, once after the island index is ready. Unsupported backends fail explicitly. */

@@ -26,6 +26,7 @@ public class EzEconomyVelocity {
 
 	private final ProxyServer server;
 	private final Logger logger;
+	private com.velocitypowered.api.scheduler.ScheduledTask broadcastTask;
 
 	@Inject
 	public EzEconomyVelocity(ProxyServer server, Logger logger) {
@@ -38,9 +39,15 @@ public class EzEconomyVelocity {
 		server.getChannelRegistrar().register(CHANNEL);
 		logger.info("EzEconomy Velocity plugin enabled — registered channel ezeconomy:notify");
 
-		server.getScheduler().buildTask(this, this::broadcastPlayerList)
+		broadcastTask = server.getScheduler().buildTask(this, this::broadcastPlayerList)
 				.repeat(3, TimeUnit.SECONDS)
 				.schedule();
+	}
+
+	@Subscribe
+	public void onProxyShutdown(com.velocitypowered.api.event.proxy.ProxyShutdownEvent event) {
+		if (broadcastTask != null) { broadcastTask.cancel(); broadcastTask = null; }
+		server.getChannelRegistrar().unregister(CHANNEL);
 	}
 
 	@Subscribe

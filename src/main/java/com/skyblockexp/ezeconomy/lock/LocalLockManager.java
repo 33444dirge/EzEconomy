@@ -11,7 +11,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class LocalLockManager implements LockManager {
-    private final Map<String, UUID> tokenOwners = new ConcurrentHashMap<>();
+    private record HeldLock(UUID uuid, ReentrantLock lock) {}
+    private final Map<String, HeldLock> tokenOwners = new ConcurrentHashMap<>();
 
     @Override
     public String acquire(UUID uuid, long ttlMs, long retryMs, int maxAttempts) throws InterruptedException {
@@ -20,14 +21,14 @@ public class LocalLockManager implements LockManager {
         // callers can fall back to local synchronization paths if needed.
         boolean primaryThread = false;
         try {
-            primaryThread = Bukkit.getServer() != null && Bukkit.isPrimaryThread();
+            primaryThread = Bukkit.getServer() != null && com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isTickThread();
         } catch (Throwable ignored) {
             primaryThread = false;
         }
         if (primaryThread) {
             if (!lock.tryLock()) return null;
             String token = "local-" + UUID.randomUUID();
-            tokenOwners.put(token, uuid);
+            tokenOwners.put(token, new HeldLock(uuid, lock));
             return token;
         }
 
@@ -37,7 +38,7 @@ public class LocalLockManager implements LockManager {
             boolean acquired = waitMs <= 0 ? lock.tryLock() : lock.tryLock(waitMs, TimeUnit.MILLISECONDS);
             if (acquired) {
                 String token = "local-" + UUID.randomUUID();
-                tokenOwners.put(token, uuid);
+                tokenOwners.put(token, new HeldLock(uuid, lock));
                 return token;
             }
             attempts++;
@@ -48,9 +49,10 @@ public class LocalLockManager implements LockManager {
     @Override
     public boolean release(UUID uuid, String token) {
         if (token == null) return false;
-        UUID owner = tokenOwners.remove(token);
-        if (owner == null || !owner.equals(uuid)) return false;
-        ReentrantLock lock = TransferLockManager.getLock(uuid);
+        HeldLock owner = tokenOwners.get(token);
+        if (owner == null || !owner.uuid().equals(uuid) || !owner.lock().isHeldByCurrentThread()) return false;
+        ReentrantLock lock = owner.lock();
+        tokenOwners.remove(token, owner);
         try {
             lock.unlock();
             return true;

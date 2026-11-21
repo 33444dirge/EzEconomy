@@ -209,7 +209,7 @@ public class MySQLStorageProvider implements StorageProvider {
         // Start background persistence and metrics after repositories are available
         try {
             int bgQueue = plugin.getConfig().getInt("performance.mysql.background-queue-size", dbConfig.getInt("mysql.background-queue-size", 10000));
-            backgroundPersistence = new BackgroundPersistenceService(plugin, hotPathDataSource, bgQueue);
+            if (hotPathDataSource != null) backgroundPersistence = new BackgroundPersistenceService(plugin, hotPathDataSource, bgQueue);
         } catch (Exception ignored) {}
         try {
             // balance background persistence configuration
@@ -262,6 +262,7 @@ public class MySQLStorageProvider implements StorageProvider {
                 closeHotStatements();
             } catch (Throwable ignored) {}
             this.connection = connectionManager.refreshFallbackConnection();
+            IslandSpendLedger.reconnect(plugin, connection, table);
             return this.connection;
         }
     }

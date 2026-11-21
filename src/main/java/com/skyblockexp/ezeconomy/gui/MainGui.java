@@ -24,6 +24,8 @@ public class MainGui {
         int slot = 0;
         for (GuiAction action : ACTIONS) {
             String basePath = "actions." + action.getKey();
+            if (!plugin.getUserGuiConfig().getBoolean(basePath + ".enabled", true)
+                    || Boolean.FALSE.equals(plugin.getUserGuiConfig().get(basePath))) continue;
             String matName = plugin.getUserGuiConfig().getString(basePath + ".icon", "PAPER");
             Material mat = Material.PAPER;
             try { mat = Material.valueOf(matName.toUpperCase()); } catch (Exception ex) {}

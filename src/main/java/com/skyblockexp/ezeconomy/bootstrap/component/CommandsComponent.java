@@ -19,6 +19,7 @@ import com.skyblockexp.ezeconomy.tabcomplete.PayTabCompleter;
 
 public class CommandsComponent implements BootstrapComponent {
     private final EzEconomyPlugin plugin;
+    private BalanceCommand balanceCommand;
 
     public CommandsComponent(EzEconomyPlugin plugin) {
         this.plugin = plugin;
@@ -26,7 +27,9 @@ public class CommandsComponent implements BootstrapComponent {
 
     @Override
     public void start() {
-        plugin.getCommand("balance").setExecutor(new BalanceCommand(plugin));
+        stop();
+        balanceCommand = new BalanceCommand(plugin);
+        plugin.getCommand("balance").setExecutor(balanceCommand);
         plugin.getCommand("balance").setTabCompleter(new BalanceTabCompleter(plugin));
         plugin.getCommand("eco").setExecutor(new EcoCommand(plugin));
         plugin.getCommand("eco").setTabCompleter(new EcoTabCompleter(plugin));
@@ -65,7 +68,7 @@ public class CommandsComponent implements BootstrapComponent {
 
     @Override
     public void stop() {
-        // No generic command unregister API; Bukkit handles plugin disable.
+        if (balanceCommand != null) { balanceCommand.close(); balanceCommand = null; }
     }
 
     @Override

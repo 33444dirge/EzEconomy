@@ -55,7 +55,7 @@ public class ConfigComponent implements BootstrapComponent {
         File langFile = new File(plugin.getDataFolder(), "languages" + File.separator + language + ".yml");
 
         FileConfiguration selected;
-        if (plugin.getResource(resourcePath) != null) {
+        if (hasResource(resourcePath)) {
             if (!langFile.exists()) {
                 plugin.saveResource(resourcePath, false);
             }
@@ -63,7 +63,7 @@ public class ConfigComponent implements BootstrapComponent {
         } else {
             plugin.getLogger().warning("Language resource '" + resourcePath + "' not found in plugin jar; falling back to English.");
             File fallbackFile = new File(plugin.getDataFolder(), "languages" + File.separator + "en.yml");
-            if (!fallbackFile.exists() && plugin.getResource("languages/en.yml") != null) {
+            if (!fallbackFile.exists() && hasResource("languages/en.yml")) {
                 plugin.saveResource("languages/en.yml", false);
             }
             selected = YamlConfiguration.loadConfiguration(fallbackFile);
@@ -71,7 +71,7 @@ public class ConfigComponent implements BootstrapComponent {
         }
 
         File fallbackFile = new File(plugin.getDataFolder(), "languages" + File.separator + "en.yml");
-        if (!fallbackFile.exists() && plugin.getResource("languages/en.yml") != null) {
+        if (!fallbackFile.exists() && hasResource("languages/en.yml")) {
             plugin.saveResource("languages/en.yml", false);
         }
         FileConfiguration fallback = YamlConfiguration.loadConfiguration(fallbackFile);
@@ -81,6 +81,11 @@ public class ConfigComponent implements BootstrapComponent {
 
         // Apply global debug flag to Jaloquent's internal logger
         JaloquentConfig.enableLogging(plugin.isDebugEnabled());
+    }
+
+    private boolean hasResource(String name) {
+        try (InputStream stream = plugin.getResource(name)) { return stream != null; }
+        catch (IOException failure) { throw new IllegalStateException("Cannot inspect resource " + name, failure); }
     }
 
     @Override

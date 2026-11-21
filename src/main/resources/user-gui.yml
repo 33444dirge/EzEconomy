@@ -2,12 +2,6 @@
 # Enable opening the user GUI when players run /eco with no arguments
 open-on-eco: true
 
-# Per-action enable flags
-actions:
-  balance: true
-  pay: true
-  history: true
-
 # Additional options can be added here for future GUI customization
  
 # Inventory titles (supports MiniMessage formatting)
@@ -22,16 +16,19 @@ title:
 # Per-action appearance and text (MiniMessage supported)
 actions:
   balance:
+    enabled: true
     icon: "GOLD_INGOT"
     display-name: "<green>Balance</green>"
     lore:
       - "<gray>View your balances across currencies</gray>"
   pay:
+    enabled: true
     icon: "PAPER"
     display-name: "<yellow>Pay</yellow>"
     lore:
       - "<gray>Pay another player</gray>"
   history:
+    enabled: true
     icon: "BOOK"
     display-name: "<red>History</red>"
     lore:

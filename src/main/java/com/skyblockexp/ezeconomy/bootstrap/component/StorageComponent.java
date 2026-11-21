@@ -61,6 +61,7 @@ public class StorageComponent implements BootstrapComponent {
             plugin.setStorage(provider);
             plugin.getLogger().info("Initialized storage provider: " + provider.getClass().getSimpleName());
         } catch (Exception ex) {
+            if (provider != null) { try { provider.shutdown(); } catch (Exception ignored) {} }
             plugin.getLogger().severe("Failed to initialize storage provider: " + ex.getMessage());
             throw new RuntimeException(ex);
         }
@@ -70,11 +71,13 @@ public class StorageComponent implements BootstrapComponent {
     public void stop() {
         StorageProvider s = plugin.getStorage();
         if (s != null) {
+            com.skyblockexp.ezeconomy.api.spending.IslandSpendLedger.close();
             try {
                 s.save();
             } catch (Exception ignored) {}
             try {
                 s.shutdown();
+                plugin.setStorage(null);
             } catch (Exception ignored) {}
         }
     }

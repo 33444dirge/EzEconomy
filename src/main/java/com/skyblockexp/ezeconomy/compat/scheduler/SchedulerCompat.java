@@ -7,6 +7,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public interface SchedulerCompat {
     boolean isFolia();
+    default boolean isTickThread() { return org.bukkit.Bukkit.isPrimaryThread(); }
     ScheduledTask runTask(JavaPlugin plugin, Runnable task);
     ScheduledTask runTaskLater(JavaPlugin plugin, Runnable task, long delayTicks);
     ScheduledTask runTaskTimer(JavaPlugin plugin, Runnable task, long delayTicks, long periodTicks);

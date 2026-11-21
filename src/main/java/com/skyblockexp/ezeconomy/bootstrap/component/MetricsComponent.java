@@ -12,6 +12,7 @@ public class MetricsComponent implements BootstrapComponent {
 
     @Override
     public void start() {
+        stop();
         try {
             plugin.getLogger().info("Initializing metrics...");
             com.skyblockexp.ezeconomy.core.EzEconomyMetrics m = new com.skyblockexp.ezeconomy.core.EzEconomyMetrics(plugin);
@@ -23,7 +24,10 @@ public class MetricsComponent implements BootstrapComponent {
 
     @Override
     public void stop() {
-        // No explicit shutdown for metrics currently
+        if (plugin.getMetrics() != null) {
+            plugin.getMetrics().close();
+            plugin.setMetrics(null);
+        }
     }
 
     @Override

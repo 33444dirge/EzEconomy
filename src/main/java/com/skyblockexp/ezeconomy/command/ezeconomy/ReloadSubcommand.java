@@ -21,11 +21,7 @@ public class ReloadSubcommand implements Subcommand {
             MessageUtils.send(sender, plugin, "no_permission");
             return true;
         }
-        // Reload main config
-        plugin.reloadConfig();
-        // Reload messages
-        plugin.loadMessageProvider();
-        // TODO: Reload storage config if needed
+        plugin.reloadRuntime();
         MessageUtils.send(sender, plugin, "reload_success");
         return true;
     }

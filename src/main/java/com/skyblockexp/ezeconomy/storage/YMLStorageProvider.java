@@ -27,8 +27,10 @@ public class YMLStorageProvider implements StorageProvider {
     private final String namingScheme;
     private final EzEconomyPlugin plugin;
     private final YamlConfiguration dbConfig;
-    private final Map<UUID, Object> playerLocks = new ConcurrentHashMap<>();
-    private final Map<String, Object> bankLocks = new ConcurrentHashMap<>();
+    private final com.skyblockexp.ezeconomy.storage.mysql.StripedLockManager playerLocks =
+            new com.skyblockexp.ezeconomy.storage.mysql.StripedLockManager(1024);
+    private final com.skyblockexp.ezeconomy.storage.mysql.StripedLockManager bankLocks =
+            new com.skyblockexp.ezeconomy.storage.mysql.StripedLockManager(256);
 
     public YMLStorageProvider(EzEconomyPlugin plugin, YamlConfiguration dbConfig) {
         this.plugin = plugin;
@@ -85,11 +87,11 @@ public class YMLStorageProvider implements StorageProvider {
     }
 
     private Object getPlayerLock(UUID uuid) {
-        return playerLocks.computeIfAbsent(uuid, key -> new Object());
+        return playerLocks.lockFor(uuid);
     }
 
     private Object getBankLock(String name) {
-        return bankLocks.computeIfAbsent(name, key -> new Object());
+        return bankLocks.lockFor(name);
     }
 
     private void savePlayerData(UUID uuid, YamlConfiguration data) {
@@ -102,7 +104,9 @@ public class YMLStorageProvider implements StorageProvider {
             org.bukkit.OfflinePlayer of = org.bukkit.Bukkit.getOfflinePlayer(uuid);
             String username = of != null && of.getName() != null ? of.getName() : uuid.toString();
             data.set("name", username);
-            if (of instanceof org.bukkit.entity.Player) {
+            if (of instanceof org.bukkit.entity.Player
+                    && (!com.skyblockexp.ezeconomy.util.scheduler.PlatformScheduler.isFolia()
+                    || Bukkit.isOwnedByCurrentRegion((org.bukkit.entity.Player) of))) {
                 data.set("displayName", ((org.bukkit.entity.Player) of).getDisplayName());
             } else {
                 data.set("displayName", username);
@@ -980,7 +984,7 @@ public class YMLStorageProvider implements StorageProvider {
     @Override
     public void insertPendingNotification(UUID targetUuid, String message) {
         File notifFile = new File(dataFolder, "pending_notifications.yml");
-        synchronized (playerLocks.computeIfAbsent(targetUuid, k -> new Object())) {
+        synchronized (getPlayerLock(targetUuid)) {
             try {
                 YamlConfiguration cfg = notifFile.exists() ? YamlConfiguration.loadConfiguration(notifFile) : new YamlConfiguration();
                 String key = targetUuid.toString();
@@ -999,7 +1003,7 @@ public class YMLStorageProvider implements StorageProvider {
         File notifFile = new File(dataFolder, "pending_notifications.yml");
         java.util.List<String> messages = new java.util.ArrayList<>();
         if (!notifFile.exists()) return messages;
-        synchronized (playerLocks.computeIfAbsent(targetUuid, k -> new Object())) {
+        synchronized (getPlayerLock(targetUuid)) {
             try {
                 YamlConfiguration cfg = YamlConfiguration.loadConfiguration(notifFile);
                 String key = targetUuid.toString();
