@@ -1,0 +1,2 @@
+# 选择 lang/<locale>.yml，缺少的条目使用 zh_CN。
+locale: zh_CN

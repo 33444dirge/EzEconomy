@@ -1,227 +1,30 @@
-# EzEconomy
+# JiuJiuEco
 
-`jiujiu` 分支已移除银行、每日登录奖励和货币兑换，见 [功能删减说明](docs/2026-11-21-feature-removal.md)。
+JiuJiuEco 在服务器启动阶段向 Vault 注册 J 点钱包，使用 JiuJiuLib 2.4.4 的命令、语言、任务调度和 PlaceholderAPI 接口。U 点由 PlayerPoints 管理。
 
-`jiujiu` 分支的本地源码迁移、构建和消费账本接入说明见 [docs/jiujiu.md](docs/jiujiu.md)。
+## 安装
 
-2026-11-21 的优化、资源释放、Folia 修复和验证结果见 [检查报告](docs/2026-11-21-audit.md)。
+停服，将旧钱包 JAR 替换为 `JiuJiuEco-1.0.2.jar`，并更新 JiuJiuLib 至 2.4.4。保留 Vault 和现有 JiuJiuEco 数据目录。默认库为 `plugins/JiuJiuEco/jiujiueco.db`。如需 MySQL，启动前在 `plugins/JiuJiuEco/config.yml` 设置 `storage: mysql` 和连接信息。钱包表名为 `jiujiueco_wallet`。
 
-![EzEconomy Icon](https://www.spigotmc.org/data/resource_icons/130/130975.jpg)
+## 命令
 
-[![Release](https://img.shields.io/github/v/release/ez-plugins/EzEconomy?label=release&style=flat-square)](https://github.com/ez-plugins/EzEconomy/releases)
-[![Publish CI](https://github.com/ez-plugins/EzEconomy/actions/workflows/maven-publish.yml/badge.svg)](https://github.com/ez-plugins/EzEconomy/actions)
-[![License](https://img.shields.io/github/license/ez-plugins/EzEconomy?style=flat-square)](https://github.com/ez-plugins/EzEconomy/blob/main/LICENSE.md)
-[![GitHub Stars](https://img.shields.io/github/stars/ez-plugins/EzEconomy?style=social)](https://github.com/ez-plugins/EzEconomy/stargazers)
+- `/balance` 或 `/bal` 查看自己的余额。`/balance <玩家>` 需要 `jiujiueco.user.balance.others`。
+- `/pay <玩家> <金额>` 一次完成扣款和入账。付款人可见剩余余额，在线收款人会收到通知。默认玩家拥有 `jiujiueco.user.pay`。
+- `/eco give|take|set <玩家> <金额>` 调整余额。管理员可使用 `jiujiueco.eco` 或单项权限 `jiujiueco.eco.give`、`jiujiueco.eco.take`、`jiujiueco.eco.set`。
+- `/eco reload` 重新加载钱包的语言文件，需要 `jiujiueco.reload`（默认 OP）。
 
-**EzEconomy** is a professional-grade Vault economy provider for Minecraft servers. Choose from YML, MySQL, SQLite, MongoDB, or custom storage with multi-currency support, async caching, and thorough permission controls.
+金额最多保留八位小数。SQLite 和 MySQL 都在同一数据库事务内完成转账。
 
-## Runtime Compatibility Matrix
+输入 `/eco` 或 `/eco help [页码]` 打开统一帮助页。Tab 按当前位置补全子命令、可见的在线玩家或示例金额。点击帮助条目可填入对应命令。
 
-### Quick Pick
+## 语言
 
-| Your runtime | Download this Bukkit jar | Notes |
-| --- | --- | --- |
-| Java 17 + MC `1.17.x`-`1.20.x` | `ezeconomy-bukkit-<version>-legacy.jar` | Uses Adventure `4.26.1`, Paper API `26.1.x` |
-| Java 21+ + MC `1.21.x` | `ezeconomy-bukkit-<version>-modern.jar` | Uses Adventure `5.2.0`, Paper API `26.2.x` |
+在 `plugins/JiuJiuEco/lang/zh_CN.yml` 修改命令说明、转账回执和错误提示。`completion.amounts` 指定 Tab 金额示例，用空格分隔。在 `plugins/JiuJiuEco/language.yml` 选择其他 locale 时，可在对应的 `lang/<locale>.yml` 中按需覆盖条目，缺项使用中文。保存后执行 `/eco reload`。帮助页外观与翻页格式由 JiuJiuLib 的 `command.help` 设置统一控制。
 
-Keep only one EzEconomy Bukkit jar in your `plugins/` folder.
+## PlaceholderAPI
 
-- Java 17 runtime: Minecraft `1.17.x` through `1.20.x`
-- Java 21+ runtime: Minecraft `1.21.x` (`1.21.11` currently validated in CI)
-- Paper API branches validated by lane:
-  - Java 17 artifact lane (`-legacy` jar): `26.1.x`
-  - Java 21+ artifact lane (`-modern` jar): `26.2.x`
-- Note: `legacy/modern` labels apply to runtime artifact lanes, not to Paper API age.
-- Bukkit release artifacts:
-  - `ezeconomy-bukkit-<version>-legacy.jar` for Java 17 / MC `1.17.x` through `1.20.x`
-  - `ezeconomy-bukkit-<version>-modern.jar` for Java 21+ / MC `1.21.x`
-- Both artifacts are published in each GitHub Release.
+安装 PlaceholderAPI 后即可使用 `%jiujiueco_balance%` 和 `%jiujiueco_balance_formatted%`，例如 `1250.5` 和 `1250.5 J`。启动时载入已有余额。本服钱包命令和 Vault 交易完成后，下一次解析即返回新余额。共享 MySQL 时，其他实例写入的余额按已查询账户每 20 tick 异步核对。
 
----
+## 构建
 
-##  Documentation
-
-- [Overview](docs/overview.md): General introduction and architecture
-- [Commands](docs/commands.md): Command usage and permissions
-- [Configuration](docs/configuration.md): All configuration options
-- [Developer API](docs/developer-api.md): API usage for plugin developers
-- [Permissions](docs/permissions.md): Permission nodes and details
-- [Placeholders](docs/integration/placeholderapi.md): PlaceholderAPI integration
-- [Storage](docs/storage/storage.md): Storage backends and setup
-- [Features - Multi-currency](docs/feature/multi-currency.md): Configure multiple currencies
-- [Features - Money formatting](docs/feature/money-formatting.md): Presentation options, locales, compact formats, and placeholders
-- [Cross-server messaging](docs/feature/cross-server.md): Velocity, BungeeCord, and Redis cross-server transports
-- [Caching strategy](docs/feature/caching-strategy.md): `LOCAL`, `REDIS`, `BUNGEECORD`, `DATABASE` options
-- [Locking strategy and options](docs/feature/locking-strategy.md): How to choose `LOCAL` vs `REDIS` and what each means
-- [Velocity integration](docs/integration/velocity.md): Velocity proxy setup for cross-server messaging
-- [BungeeCord integration](docs/integration/bungeecord.md): BungeeCord proxy locking and messaging
-- [Proxy & Redis notes](docs/integration/redis.md): Redis and proxy operational notes
-
-> Do you get the message "Missing message: ..."? Please check the latest available translations: https://github.com/ez-plugins/EzEconomy/tree/main/src/main/resources/languages
-
----
-
-This branch provides wallet balances, same-currency payments, rankings, and optional independent currencies. Banks, daily login rewards, and currency exchange have been removed; old feature settings are ignored.
-
-##  Key Features
-
-EzEconomy is designed for performance, reliability, and operational clarity. Highlights include:
-
-- **Vault API compatible**: Works with any Vault-based plugin
-- **YML, MySQL, SQLite, MongoDB, or custom storage**: Flexible, production-ready storage options
-- **Thread-safe**: Robust error handling and concurrency controls
-- **Multi-currency support**: Optional, per-player, fully configurable
-- **Cross-server messaging**: Payment notifications and player lists via Velocity, BungeeCord, or Redis pub/sub
-- **Distributed locking**: LOCAL, REDIS, or BUNGEECORD lock strategies for multi-server safety
-- **Async caching**: Optimised for large servers
-- **Granular permissions**: Per-command permissions
-
----
-
-##  Commands
-
-- **/balance**: View your balance
-- **/balance <player>**: View another player's balance (`ezeconomy.balance.others`)
-- **/eco gui**: Open the `/eco` administrative GUI (if enabled). Permission: `ezeconomy.eco.gui` (default: allowed for everyone).
-- **/eco give <player> <amount> [currency]**: Add funds to a player. Optional currency (multi-currency). Permission: `ezeconomy.eco.give` (or the umbrella `ezeconomy.eco`).
-- **/eco take <player> <amount> [currency]**: Remove funds from a player. Optional currency (multi-currency). Permission: `ezeconomy.eco.take` (or the umbrella `ezeconomy.eco`).
-- **/eco set <player> <amount> [currency]**: Set a player's balance. Optional currency (multi-currency). Permission: `ezeconomy.eco.set` (or the umbrella `ezeconomy.eco`).
-- **/baltop [amount]**: Show top balances
-- **/pay <player> <amount>**: Send funds to another player (`ezeconomy.pay`)
-- **/pay * <amount>**: Send funds to all online players (requires `ezeconomy.payall`; configurable via `pay.pay_all` in `config.yml`). See [Commands](docs/commands.md) for details.
-- **/currency [currency]**: Set or view your preferred currency
-
----
-
-##  Permissions
-
-- `ezeconomy.balance.others`: View other players' balances
-- `ezeconomy.eco`: Use /eco admin command
-- `ezeconomy.pay`: Use /pay command
-- `ezeconomy.currency`: Use /currency command
- - `ezeconomy.eco`: Legacy umbrella admin permission (still supported)
- - `ezeconomy.eco.give`: Permission for `/eco give`
- - `ezeconomy.eco.take`: Permission for `/eco take`
- - `ezeconomy.eco.set`: Permission for `/eco set`
- - `ezeconomy.eco.gui`: Permission to open the `/eco` GUI (default: allowed for everyone)
- - `ezeconomy.pay`: Use /pay command
- - `ezeconomy.currency`: Use /currency command
-
----
-
-##  Security Notes for Server Owners
-
-- **Use a permissions plugin**: Manage access with groups/roles so players cannot self-assign economy powers.
-- **Lock down database access**: Use a dedicated database user with minimal privileges and keep credentials private.
-- **Back up economy data**: Schedule regular backups of your storage files or database to recover from mistakes or exploits.
-
----
-
-##  Dupe Prevention Safeguards
-
-- **Thread-safe balance updates**: Economy operations are designed to avoid race conditions during concurrent deposits, withdrawals, and transfers.
-- **Server-side validation**: Commands and transactions validate amounts to prevent invalid or malformed requests.
-- **Storage integrity**: Backends use consistent write patterns to reduce the risk of partial or conflicting balance writes.
-
----
-
-##  Configuration Example
-
-### `config.yml` (Only global settings):
-```yaml
-storage: yml
-multi-currency:
-  enabled: false
-  default: "dollar"
-  currencies:
-    dollar:
-      display: "Dollar"
-      symbol: "$"
-      decimals: 2
-    euro:
-      display: "Euro"
-      symbol: ""
-      decimals: 2
-    gem:
-      display: "Gem"
-      symbol: ""
-      decimals: 0
-```
-
-### `config-yml.yml` (YML storage settings):
-```yaml
-yml:
-  file: balances.yml
-  per-player-file-naming: uuid
-  data-folder: data
-```
-
-### `config-mysql.yml` (MySQL storage settings):
-```yaml
-mysql:
-  host: localhost
-  port: 3306
-  database: ezeconomy
-  username: root
-  password: password
-  table: balances
-```
-
-### `config-sqlite.yml` (SQLite storage settings):
-```yaml
-sqlite:
-  file: ezeconomy.db
-  table: balances
-```
-
-### `config-mongodb.yml` (MongoDB storage settings):
-```yaml
-mongodb:
-  uri: mongodb://localhost:27017
-  database: ezeconomy
-  collection: balances
-```
-
----
-
-##  Installation
-
-1. Place the correct Bukkit artifact in your plugins folder and rename if desired:
-  - Java 17 servers: `ezeconomy-bukkit-<version>-legacy.jar`
-  - Java 21+ servers: `ezeconomy-bukkit-<version>-modern.jar`
-  - Keep only one EzEconomy Bukkit jar on a server at a time.
-2. Configure `config.yml` and the appropriate `config-*.yml` file for your storage type
-3. Restart your server
-
----
-
-## - Integration
-
-- EzEconomy automatically registers as a Vault provider
-- No extra setup required for Vault-compatible plugins
-- **PlaceholderAPI support**:
-  - Use placeholders in chat, scoreboard, and other plugins:
-    - `%ezeconomy_balance%`  Your balance
-    - `%ezeconomy_balance_<currency>%`  Your balance in a specific currency (e.g., `%ezeconomy_balance_euro%`)
-    - `%ezeconomy_top_1%`  Top 1 player balance (replace 1 with rank)
-    - `%ezeconomy_currency%`  Your preferred currency
-  - Works with all PlaceholderAPI-compatible plugins
-
----
-
-##  Developer: Custom Storage Providers
-
-EzEconomy supports custom storage backends (YML, MySQL, SQLite, MongoDB, or your own). You can implement your own provider for any database or storage system.
-
-**How to add a custom provider:**
-
-1. Implement the `StorageProvider` interface in your plugin or module.
-2. Register your provider before EzEconomy loads:
-   ```java
-   EzEconomy.registerStorageProvider(new YourProvider(...));
-   ```
-3. Only one provider can be registered. If set, EzEconomy will use it instead of YML/MySQL.
-4. See the JavaDoc in `StorageProvider.java` for required methods.
-
-This allows you to use SQLite, MongoDB, Redis, or any other system for player balances.
-
+使用 JDK 25。在 JiuJiuLib 工程运行 `gradlew :jiujiulib-api:publishToMavenLocal`，然后使用同一本地 Maven 仓库在本工程运行 `mvn clean verify`。成品为 `target/JiuJiuEco-1.0.2.jar`。

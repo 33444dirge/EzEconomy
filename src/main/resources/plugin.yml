@@ -1,89 +1,34 @@
-name: EzEconomy
-main: com.skyblockexp.ezeconomy.core.EzEconomyPlugin
+name: JiuJiuEco
+main: city.jiujiu.eco.bukkit.JiuJiuEco
 version: ${project.version}
-website: https://modrinth.com/plugin/ezeconomy
-author: Shadow48402
-api-version: 1.17
+api-version: '1.13'
 folia-supported: true
-description: Vault-compatible economy provider with YML and MySQL support
-depend: [Vault]
-softdepend: [PlaceholderAPI]
-
+load: STARTUP
+depend: [Vault, JiuJiuLib]
 commands:
   balance:
-    description: Check your balance or another player's balance
-    usage: /balance [player] [currency]
+    description: 查询 J 点余额
     aliases: [bal]
-  eco:
-    description: Admin economy control (give, take, set)
-    usage: /eco <give|take|set> <player> <amount> [currency]
-  baltop:
-    description: Show top player balances
-    usage: /baltop [amount]
+    usage: /balance [玩家]
   pay:
-    description: Pay money to another player or all players
-    usage: /pay <player|*> <amount> [currency]
-    aliases: [ezpay]
-  payall:
-    description: Pay money to all players (alias for /pay *)
-    usage: /payall <amount> [currency]
-  currency:
-    description: View or set your preferred currency
-    usage: /currency [currency]
-  ezeconomy:
-    description: EzEconomy admin utilities
-    usage: /ezeconomy <cleanup|reload|reload messages|database|spool>
-
+    description: 向其他玩家转账 J 点
+    usage: /pay <玩家> <金额>
+    permission: jiujiueco.user.pay
+  eco:
+    description: 增加、扣除或设置玩家的 J 点余额
+    usage: /eco <give|take|set> <玩家> <金额>
 permissions:
-  ezeconomy.payall:
-    description: Allows using /pay * to pay all players
+  jiujiueco.reload:
     default: op
-  ezeconomy.payall.bypasswithdraw:
-    description: Allows paying all without withdrawing from sender balance
-    default: op
-  ezeconomy.eco:
-    description: Allows using the /eco admin command (umbrella permission)
-    default: op
-  ezeconomy.eco.give:
-    description: Allows /eco give <player> <amount>
-    default: op
-  ezeconomy.eco.take:
-    description: Allows /eco take <player> <amount>
-    default: op
-  ezeconomy.eco.set:
-    description: Allows /eco set <player> <amount>
-    default: op
-  ezeconomy.eco.gui:
-    description: Allows opening the /eco GUI or using /eco to open the user GUI
+  jiujiueco.user.pay:
     default: true
-  ezeconomy.database:
-    description: Allows viewing database info and running /ezeconomy database subcommands
+  jiujiueco.user.balance.others:
     default: op
-  ezeconomy.database.spool:
-    description: Allows viewing local MySQL fallback spool state with /ezeconomy spool size
+  jiujiueco.eco:
     default: op
-  ezeconomy.database.spool.replay:
-    description: Allows forcing fallback spool replay with /ezeconomy spool replay
+  jiujiueco.eco.give:
     default: op
-  # New user-scoped permissions (preferred). Legacy ezeconomy.* nodes still supported for backwards compatibility.
-  ezeconomy.user.pay:
-    description: Send money to another player with `/pay` (preferred user node)
-    default: true
-  ezeconomy.user.payall:
-    description: Allows using /pay * to pay all players
+  jiujiueco.eco.take:
     default: op
-  ezeconomy.user.payall.bypasswithdraw:
-    description: Allows paying all without withdrawing from sender balance
+  jiujiueco.eco.set:
     default: op
-  ezeconomy.user.currency:
-    description: View or change your preferred currency with `/currency`
-    default: true
-  ezeconomy.user.baltop:
-    description: View the top-balance list with `/baltop`
-    default: true
-  ezeconomy.user.balance.others:
-    description: View another player's balance
-    default: op
-  ezeconomy.user.eco.gui:
-    description: Allows opening the /eco GUI or using /eco to open the user GUI
-    default: true
